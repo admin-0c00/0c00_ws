@@ -47,6 +47,14 @@ source ~/0c00_ws/swarm_ws/install/setup.bash   # 按实际 clone 路径调整
 ros2 run bringup swarm_takeoff.py     # 或按 bringup 包内说明
 ```
 
+单机飞行演示（客户 Demo：起飞 → 向前 2m → 顺时针 2m 正方形 → 回原点 → 降落）：
+
+```bash
+# 先启动单机仿真: ~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 1 1
+python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square.py
+# 可调: --ros-args -p takeoff_alt:=2.0 -p side:=3.0
+```
+
 Web 地面站（状态卡片 + 3D 地图）：
 
 ```bash
