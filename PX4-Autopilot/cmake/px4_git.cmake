@@ -62,6 +62,13 @@ function(px4_add_git_submodule)
 		REQUIRED TARGET PATH
 		ARGN ${ARGN})
 
+	# SwarmCore-Sim snapshot: submodules are flattened into the source tree
+	# (no .gitmodules), so there is nothing to init -- make the target a no-op.
+	if(NOT EXISTS ${PX4_SOURCE_DIR}/.gitmodules)
+		add_custom_target(${TARGET})
+		return()
+	endif()
+
 	set(REL_PATH)
 
 	if(IS_ABSOLUTE ${PATH})
