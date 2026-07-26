@@ -103,7 +103,9 @@
 
 <script>
 // ============================== 配置 ==============================
-const ROSBRIDGE_URL = `ws://${location.hostname}:9090`;
+// 走与页面同端口的 /ws 中转（web_server.py 转发到 rosbridge:9090），
+// 避免 9090 被中间网络设备拦截
+const ROSBRIDGE_URL = `ws://${location.host}/ws`;
 const MAX_UAV = 6;
 const COLORS = [0xff5252, 0x4caf50, 0x42a5f5, 0xff9800, 0xab47bc, 0x26c6da];
 const CSS_COLORS = ['#ff5252', '#4caf50', '#42a5f5', '#ff9800', '#ab47bc', '#26c6da'];

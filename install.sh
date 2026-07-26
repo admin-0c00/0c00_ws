@@ -62,7 +62,7 @@ fi
 # ---------- 4. Python 依赖（清华 pip 镜像） ----------
 info "步骤 4/7: 安装 PX4 Python 依赖（清华 pip 镜像）..."
 pip3 install --user -i "$TUNA_PIP" -r "$ROOT/PX4-Autopilot/Tools/setup/requirements.txt"
-pip3 install --user -i "$TUNA_PIP" empy==3.3.4 catkin_pkg rospkg jsonschema
+pip3 install --user -i "$TUNA_PIP" empy==3.3.4 catkin_pkg rospkg jsonschema "websockets>=13"
 
 # ---------- 5. MicroXRCEAgent ----------
 if command -v MicroXRCEAgent &>/dev/null; then

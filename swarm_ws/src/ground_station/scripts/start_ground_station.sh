@@ -18,11 +18,11 @@ else
     echo "[ground_station] rosbridge 已启动 (ws://localhost:9090)"
 fi
 
-if pgrep -f "http.server 8080" > /dev/null; then
+if pgrep -f "web_server.py" > /dev/null; then
     echo "[ground_station] Web 页面已在运行: http://localhost:8080"
 else
-    nohup python3 -m http.server 8080 -d "$WEB_DIR" > /tmp/gs_http.log 2>&1 &
-    echo "[ground_station] Web 页面已启动: http://localhost:8080"
+    nohup python3 "$DIR/web_server.py" > /tmp/gs_http.log 2>&1 &
+    echo "[ground_station] Web 页面已启动: http://localhost:8080 (ws 走同端口 /ws 中转)"
 fi
 
 # 话题记录节点（web“记录”标签页的后端）
