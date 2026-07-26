@@ -40,8 +40,8 @@ for i in $(seq 0 $((N - 1))); do
     mkdir -p "$inst_dir"
     # 实例工作目录需要能找到 ROMFS 与 gz 环境
     [ -e "$inst_dir/etc" ] || ln -s "$ROOTFS/etc" "$inst_dir/etc"
-    # 每架独立的 uXRCE session key
-    echo "param set UXRCE_DDS_KEY $sysid" > "$inst_dir/px4-rc.params"
+    # 每架独立的 uXRCE session key；地理围栏: 越界自动返航（飞控侧强制，地面站挂了也生效）
+    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION 3\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\n' "$sysid" > "$inst_dir/px4-rc.params"
 
     cd "$inst_dir"
     PX4_SIMULATOR="gz" \

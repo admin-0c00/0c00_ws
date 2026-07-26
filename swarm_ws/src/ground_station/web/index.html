@@ -18,6 +18,8 @@
   #view3d { flex: 1; position: relative; }
   #view3d canvas { display: block; }
   #hint { position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #8b949e; user-select: none; }
+  #fence-alert { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(248, 81, 73, 0.92); color: #fff; font-size: 14px; font-weight: 600; padding: 8px 20px; border-radius: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  #fence-alert.show { opacity: 1; }
   .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; }
   .card.stale { opacity: 0.45; }
   .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -51,11 +53,12 @@
     <button class="gbtn" data-cmd="rtl">全部返航</button>
     <button class="gbtn" data-cmd="land">全部降落</button>
     <button class="gbtn danger" data-cmd="disarm">全部上锁</button>
+    <button class="gbtn" id="fence-toggle">围栏返航: 开</button>
   </div>
 </div>
 <div id="main">
   <div id="sidebar"><div id="empty">等待无人机数据…<br>请先启动仿真 (start_swarm_sim.sh)</div></div>
-  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m</div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div></div>
 </div>
 
 <script>
@@ -108,7 +111,7 @@ for (let i = 1; i <= MAX_UAV; i++) {
   });
   sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
     const u = getUav(ns, i);
-    if (!geoRef && m.lat && m.lon) geoRef = { lat: m.lat, lon: m.lon, alt: m.alt };
+    if (!geoRef && ns === 'uav_1' && m.lat && m.lon) geoRef = { lat: m.lat, lon: m.lon, alt: m.alt };
     u.gpos = m; u.lastSeen = Date.now();
     if (u.pos) { updateCard(u); update3D(u); }
   });
@@ -213,8 +216,26 @@ sidebar.addEventListener('click', (e) => {
   sendCmd(u, a);
 });
 
-// 顶栏全局按钮
-document.querySelectorAll('#global-ctl .gbtn').forEach((b) => {
+// 顶栏围栏自动返航开关
+let fenceAutoRtl = true;
+const fenceToggle = document.getElementById('fence-toggle');
+fenceToggle.addEventListener('click', () => {
+  fenceAutoRtl = !fenceAutoRtl;
+  fenceToggle.textContent = `围栏返航: ${fenceAutoRtl ? '开' : '关'}`;
+  fenceToggle.classList.toggle('danger', !fenceAutoRtl);
+});
+
+let fenceAlertTimer = null;
+function showFenceAlert(ns) {
+  const el = document.getElementById('fence-alert');
+  el.textContent = `⚠ ${ns} 越过电子围栏，已自动下发返航`;
+  el.classList.add('show');
+  clearTimeout(fenceAlertTimer);
+  fenceAlertTimer = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+// 顶栏全局按钮（仅带 data-cmd 的，围栏开关单独处理）
+document.querySelectorAll('#global-ctl .gbtn[data-cmd]').forEach((b) => {
   b.addEventListener('click', () => {
     const online = Object.values(uavs).filter((u) => Date.now() - u.lastSeen < 3000);
     if (!online.length) { alert('当前没有在线飞机'); return; }
@@ -431,6 +452,13 @@ function update3D(u) {
   u.mesh.position.copy(p);
   u.label.position.set(p.x, p.y + 0.7, p.z);
   u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;
+  // 越界自动返航（地面站侧兜底，15 秒冷却；飞控侧 GF_ACTION=3 是主保险）
+  const armedNow = u.status && u.status.arming_state === 2;
+  if (u.outFence && armedNow && fenceAutoRtl && (!u.lastFenceCmd || Date.now() - u.lastFenceCmd > 15000)) {
+    u.lastFenceCmd = Date.now();
+    sendCmd(u, 'rtl');
+    showFenceAlert(u.ns);
+  }
   if (u.att && u.att.q) {
     const [w, x, y, z] = u.att.q;
     const r00 = 1 - 2 * (y * y + z * z), r01 = 2 * (x * y - z * w),     r02 = 2 * (x * z + y * w);
