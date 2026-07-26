@@ -24,3 +24,11 @@ else
     nohup python3 -m http.server 8080 -d "$WEB_DIR" > /tmp/gs_http.log 2>&1 &
     echo "[ground_station] Web 页面已启动: http://localhost:8080"
 fi
+
+# 话题记录节点（web“记录”标签页的后端）
+if pgrep -f "recorder_node.py" > /dev/null; then
+    echo "[ground_station] 话题记录节点已在运行"
+else
+    nohup python3 "$DIR/recorder_node.py" > /tmp/gs_recorder.log 2>&1 &
+    echo "[ground_station] 话题记录节点已启动"
+fi

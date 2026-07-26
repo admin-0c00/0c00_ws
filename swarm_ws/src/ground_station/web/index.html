@@ -41,6 +41,18 @@
   .gbtn.danger:hover, .cbtn.danger:hover { background: #5c2424; }
   .ctl-row { display: flex; gap: 6px; margin-top: 8px; }
   .ctl-row .cbtn { flex: 1; padding: 4px 0; }
+  #fence-ctl { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+  #fence-action { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+  .tab-bar { display: flex; gap: 6px; }
+  .tab-btn { flex: 1; background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 5px 0; font-size: 13px; cursor: pointer; }
+  .tab-btn.active { background: #0d2740; color: #58d6ff; border-color: #1c4a6e; }
+  #tab-record { display: none; }
+  .rec-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .rec-card h3 { font-size: 13px; margin-bottom: 6px; }
+  .rec-ns { font-size: 12px; font-weight: 600; margin-top: 6px; }
+  .rec-topic { display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: "JetBrains Mono", Consolas, monospace; padding: 1px 0; color: #8b949e; }
+  #rec-status { font-size: 12px; color: #8b949e; margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
+  #rec-status.rec-on { color: #f85149; }
 </style>
 </head>
 <body>
@@ -53,11 +65,35 @@
     <button class="gbtn" data-cmd="rtl">全部返航</button>
     <button class="gbtn" data-cmd="land">全部降落</button>
     <button class="gbtn danger" data-cmd="disarm">全部上锁</button>
-    <button class="gbtn" id="fence-toggle">围栏返航: 开</button>
+    <label id="fence-ctl">围栏动作:
+      <select id="fence-action">
+        <option value="off">关闭</option>
+        <option value="hold">悬停</option>
+        <option value="land">降落</option>
+        <option value="rtl" selected>返航</option>
+      </select>
+    </label>
   </div>
 </div>
 <div id="main">
-  <div id="sidebar"><div id="empty">等待无人机数据…<br>请先启动仿真 (start_swarm_sim.sh)</div></div>
+  <div id="sidebar">
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-btn-status">状态</button>
+      <button class="tab-btn" id="tab-btn-record">记录</button>
+    </div>
+    <div id="tab-status"><div id="empty">等待无人机数据…<br>请先启动仿真 (start_swarm_sim.sh)</div></div>
+    <div id="tab-record">
+      <div class="rec-card">
+        <h3>选择要记录的话题（只录勾选项，控制磁盘占用）</h3>
+        <div id="rec-topics"><div style="color:#8b949e;font-size:12px">等待飞机上线…</div></div>
+        <div class="ctl-row" style="margin-top:10px">
+          <button class="cbtn" id="rec-start">开始记录</button>
+          <button class="cbtn danger" id="rec-stop" disabled>停止</button>
+        </div>
+        <div id="rec-status">未在记录</div>
+      </div>
+    </div>
+  </div>
   <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div></div>
 </div>
 
@@ -128,13 +164,15 @@ function getUav(ns, idx) {
   if (!uavs[ns]) {
     uavs[ns] = { ns, idx, color: COLORS[(idx - 1) % COLORS.length], css: CSS_COLORS[(idx - 1) % CSS_COLORS.length], trailPts: [] };
     createCard(uavs[ns]); createMesh(uavs[ns]);
+    refreshRecTopics();
     document.getElementById('empty')?.remove();
   }
   return uavs[ns];
 }
 
 // ============================== 状态卡片 ==============================
-const sidebar = document.getElementById('sidebar');
+// 卡片都挂在“状态”标签页内，事件委托也绑在它上面
+const sidebar = document.getElementById('tab-status');
 
 function createCard(u) {
   const el = document.createElement('div');
@@ -173,7 +211,9 @@ const MAV_CMDS = {
   takeoff: { command: 22 },
   rtl:     { command: 20 },
   land:    { command: 21 },
+  hold:    { command: 17 },   // NAV_LOITER_UNLIM -> 切 Hold
 };
+const FENCE_ACTION_NAMES = { hold: '悬停', land: '降落', rtl: '返航' };
 const cmdTopics = {};
 
 function sendCmd(u, action) {
@@ -219,19 +259,13 @@ sidebar.addEventListener('click', (e) => {
   sendCmd(u, a);
 });
 
-// 顶栏围栏自动返航开关
-let fenceAutoRtl = true;
-const fenceToggle = document.getElementById('fence-toggle');
-fenceToggle.addEventListener('click', () => {
-  fenceAutoRtl = !fenceAutoRtl;
-  fenceToggle.textContent = `围栏返航: ${fenceAutoRtl ? '开' : '关'}`;
-  fenceToggle.classList.toggle('danger', !fenceAutoRtl);
-});
+// 围栏动作（下拉选择: 关闭/悬停/降落/返航），越界时由 update3D 读取当前值执行
+const fenceActionSel = document.getElementById('fence-action');
 
 let fenceAlertTimer = null;
-function showFenceAlert(ns) {
+function showFenceAlert(ns, action) {
   const el = document.getElementById('fence-alert');
-  el.textContent = `⚠ ${ns} 越过电子围栏，已自动下发返航`;
+  el.textContent = `⚠ ${ns} 越过电子围栏，已自动下发【${FENCE_ACTION_NAMES[action]}】`;
   el.classList.add('show');
   clearTimeout(fenceAlertTimer);
   fenceAlertTimer = setTimeout(() => el.classList.remove('show'), 5000);
@@ -281,6 +315,53 @@ setInterval(() => {
     u.card.classList.toggle('stale', Date.now() - u.lastSeen > 3000);
   }
 }, 1000);
+
+// ============================== 标签页与话题记录 ==============================
+const tabBtns = { status: document.getElementById('tab-btn-status'), record: document.getElementById('tab-btn-record') };
+function switchTab(name) {
+  tabBtns.status.classList.toggle('active', name === 'status');
+  tabBtns.record.classList.toggle('active', name === 'record');
+  document.getElementById('tab-status').style.display = name === 'status' ? '' : 'none';
+  document.getElementById('tab-record').style.display = name === 'record' ? '' : 'none';
+}
+tabBtns.status.addEventListener('click', () => switchTab('status'));
+tabBtns.record.addEventListener('click', () => switchTab('record'));
+
+// 记录页: 勾选话题 -> /recorder/config (JSON) -> recorder_node 起 ros2 bag record
+const RECORDABLE = ['vehicle_status', 'vehicle_local_position', 'vehicle_global_position', 'vehicle_attitude', 'battery_status'];
+const recConfigTopic = new ROSLIB.Topic({ ros, name: '/recorder/config', messageType: 'std_msgs/msg/String' });
+recConfigTopic.advertise();
+new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe((m) => {
+  try {
+    const st = JSON.parse(m.data);
+    const el = document.getElementById('rec-status');
+    el.classList.toggle('rec-on', st.recording);
+    el.textContent = st.recording
+      ? `● 录制中: ${st.topics.length} 个话题\n${st.dir}\n已写入 ${st.size_mb} MB`
+      : (st.dir ? `未在记录\n最近 bag: ${st.dir} (${st.size_mb} MB)` : '未在记录');
+    document.getElementById('rec-start').disabled = st.recording;
+    document.getElementById('rec-stop').disabled = !st.recording;
+  } catch (e) { /* 忽略非 JSON 状态 */ }
+});
+
+function refreshRecTopics() {
+  const box = document.getElementById('rec-topics');
+  const nss = Object.keys(uavs).sort();
+  if (!nss.length) { box.innerHTML = '<div style="color:#8b949e;font-size:12px">等待飞机上线…</div>'; return; }
+  box.innerHTML = nss.map((ns) =>
+    `<div class="rec-ns">${ns}</div>` +
+    RECORDABLE.map((t) => `<label class="rec-topic"><input type="checkbox" checked data-topic="/${ns}/fmu/out/${t}"> ${t}</label>`).join('')
+  ).join('');
+}
+
+document.getElementById('rec-start').addEventListener('click', () => {
+  const topics = [...document.querySelectorAll('#rec-topics input:checked')].map((c) => c.dataset.topic);
+  if (!topics.length) { alert('请先勾选要记录的话题'); return; }
+  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'start', topics }) }));
+});
+document.getElementById('rec-stop').addEventListener('click', () => {
+  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'stop' }) }));
+});
 
 // ============================== 3D 视图 ==============================
 const container = document.getElementById('view3d');
@@ -455,12 +536,13 @@ function update3D(u) {
   u.mesh.position.copy(p);
   u.label.position.set(p.x, p.y + 0.7, p.z);
   u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;
-  // 越界自动返航（地面站侧兜底，15 秒冷却；飞控侧 GF_ACTION=3 是主保险）
+  // 越界自动执行用户选择的围栏动作（15 秒冷却；飞控侧 GF_* 是主保险）
   const armedNow = u.status && u.status.arming_state === 2;
-  if (u.outFence && armedNow && fenceAutoRtl && (!u.lastFenceCmd || Date.now() - u.lastFenceCmd > 15000)) {
+  const fenceAct = fenceActionSel.value;
+  if (u.outFence && armedNow && fenceAct !== 'off' && (!u.lastFenceCmd || Date.now() - u.lastFenceCmd > 15000)) {
     u.lastFenceCmd = Date.now();
-    sendCmd(u, 'rtl');
-    showFenceAlert(u.ns);
+    sendCmd(u, fenceAct);
+    showFenceAlert(u.ns, fenceAct);
   }
   if (u.att && u.att.q) {
     const [w, x, y, z] = u.att.q;
