@@ -122,7 +122,7 @@ const FENCE_H = 6;    // 围栏可视化高度 (m)
 const uavs = {}; // ns -> {status, battery, pos, lastSeen, card, mesh, label, trail...}
 const ros = new ROSLIB.Ros({ url: ROSBRIDGE_URL });
 
-ros.on('connection', () => setConn(true));
+ros.on('connection', () => { setConn(true); setupRos(); });
 ros.on('close', () => { setConn(false); setTimeout(() => ros.connect(ROSBRIDGE_URL), 2000); });
 ros.on('error', () => setConn(false));
 
@@ -132,38 +132,44 @@ function setConn(ok) {
 }
 
 // ============================== 订阅 ==============================
-for (let i = 1; i <= MAX_UAV; i++) {
-  const ns = `uav_${i}`;
-  sub(ns, 'vehicle_status', 'px4_msgs/msg/VehicleStatus', (m) => {
-    const u = getUav(ns, i);
-    u.status = m; u.lastSeen = Date.now(); updateCard(u);
-  });
-  sub(ns, 'battery_status', 'px4_msgs/msg/BatteryStatus', (m) => {
-    const u = getUav(ns, i);
-    u.battery = m; u.lastSeen = Date.now(); updateCard(u);
-  });
-  sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
-    const u = getUav(ns, i);
-    // 共享坐标原点固定为 uav_1 的 EKF 原点（= 它的起始位置，不随飞行改变，与页面何时打开无关）
-    if (!geoRef && ns === 'uav_1' && m.xy_global && m.ref_lat) {
-      geoRef = { lat: m.ref_lat, lon: m.ref_lon, alt: m.ref_alt };
-    }
-    u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
-  });
-  sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
-    const u = getUav(ns, i);
-    u.att = m; u.lastSeen = Date.now();
-    if (u.pos) update3D(u);
-  });
-  sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
-    const u = getUav(ns, i);
-    // 每架在地面（未解锁）时持续记录自己的地面海拔作为高度零点：
-    // 仿真中各机 EKF 海拔有 ±0.5~1m 实例间散布，"相对自己起飞点的高度"才有一致语义
-    // （与真机光流/对地定高一致），每次落地自动重新校准
-    if (!u.status || u.status.arming_state !== 2) u.groundAlt = m.alt;
-    u.gpos = m; u.lastSeen = Date.now();
-    if (u.pos) { updateCard(u); update3D(u); }
-  });
+// 每次连接（含重连）都要重建全部订阅与发布者——roslib 不会自动恢复
+function setupRos() {
+  for (let i = 1; i <= MAX_UAV; i++) {
+    const ns = `uav_${i}`;
+    sub(ns, 'vehicle_status', 'px4_msgs/msg/VehicleStatus', (m) => {
+      const u = getUav(ns, i);
+      u.status = m; u.lastSeen = Date.now(); updateCard(u);
+    });
+    sub(ns, 'battery_status', 'px4_msgs/msg/BatteryStatus', (m) => {
+      const u = getUav(ns, i);
+      u.battery = m; u.lastSeen = Date.now(); updateCard(u);
+    });
+    sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
+      const u = getUav(ns, i);
+      // 共享坐标原点固定为 uav_1 的 EKF 原点（= 它的起始位置，不随飞行改变，与页面何时打开无关）
+      if (!geoRef && ns === 'uav_1' && m.xy_global && m.ref_lat) {
+        geoRef = { lat: m.ref_lat, lon: m.ref_lon, alt: m.ref_alt };
+      }
+      u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
+    });
+    sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
+      const u = getUav(ns, i);
+      u.att = m; u.lastSeen = Date.now();
+      if (u.pos) update3D(u);
+    });
+    sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
+      const u = getUav(ns, i);
+      // 每架在地面（未解锁）时持续记录自己的地面海拔作为高度零点
+      if (!u.status || u.status.arming_state !== 2) u.groundAlt = m.alt;
+      u.gpos = m; u.lastSeen = Date.now();
+      if (u.pos) { updateCard(u); update3D(u); }
+    });
+  }
+  // 记录状态订阅
+  new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe(recStatusHandler);
+  // 发布者在新连接上重新注册
+  recConfigTopic.advertise();
+  Object.values(cmdTopics).forEach((t) => t.advertise());
 }
 
 function sub(ns, topic, type, cb) {
@@ -345,8 +351,8 @@ tabBtns.record.addEventListener('click', () => switchTab('record'));
 // 记录页: 勾选话题 -> /recorder/config (JSON) -> recorder_node 起 ros2 bag record
 const RECORDABLE = ['vehicle_status', 'vehicle_local_position', 'vehicle_global_position', 'vehicle_attitude', 'battery_status'];
 const recConfigTopic = new ROSLIB.Topic({ ros, name: '/recorder/config', messageType: 'std_msgs/msg/String' });
-recConfigTopic.advertise();
-new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe((m) => {
+// advertise 与 status 订阅统一在 setupRos() 里做（重连自动重建）
+function recStatusHandler(m) {
   try {
     const st = JSON.parse(m.data);
     const el = document.getElementById('rec-status');
@@ -357,7 +363,7 @@ new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/Str
     document.getElementById('rec-start').disabled = st.recording;
     document.getElementById('rec-stop').disabled = !st.recording;
   } catch (e) { /* 忽略非 JSON 状态 */ }
-});
+}
 
 function refreshRecTopics() {
   const box = document.getElementById('rec-topics');
