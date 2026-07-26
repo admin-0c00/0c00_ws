@@ -41,8 +41,9 @@
   .gbtn.danger:hover, .cbtn.danger:hover { background: #5c2424; }
   .ctl-row { display: flex; gap: 6px; margin-top: 8px; }
   .ctl-row .cbtn { flex: 1; padding: 4px 0; }
-  #fence-ctl { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+  #fence-ctl, #takeoff-ctl { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
   #fence-action { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+  #takeoff-alt { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 3px 6px; font-size: 12px; width: 58px; }
   .tab-bar { display: flex; gap: 6px; }
   .tab-btn { flex: 1; background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 5px 0; font-size: 13px; cursor: pointer; }
   .tab-btn.active { background: #0d2740; color: #58d6ff; border-color: #1c4a6e; }
@@ -72,6 +73,9 @@
         <option value="land">降落</option>
         <option value="rtl" selected>返航</option>
       </select>
+    </label>
+    <label id="takeoff-ctl">起飞高度:
+      <input id="takeoff-alt" type="number" value="1.5" step="0.5" min="0.5" max="50"> m
     </label>
   </div>
 </div>
@@ -187,7 +191,7 @@ function createCard(u) {
       <span class="k">飞行模式</span><span class="v" data-f="mode">-</span>
       <span class="k">电量</span><span class="v" data-f="bat">-</span>
       <span class="k">电压/电流</span><span class="v" data-f="volt">-</span>
-      <span class="k">位置 N/E/Alt</span><span class="v" data-f="pos">-</span>
+      <span class="k">位置 N/E/高(起点)</span><span class="v" data-f="pos">-</span>
       <span class="k">速度 水平/垂直</span><span class="v" data-f="vel">-</span>
     </div>
     <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>
@@ -220,10 +224,13 @@ function sendCmd(u, action) {
   const def = MAV_CMDS[action];
   if (!def) return;
   // PX4 的起飞命令只负责切到 AUTO_TAKEOFF 模式，未解锁时不会执行；
-  // 因此起飞 = 先解锁，1 秒后再发起飞（已解锁时 arm 是无害的重复命令）
+  // 因此起飞 = 先解锁，1 秒后再发起飞（已解锁时 arm 是无害的重复命令）。
+  // 目标高度: param7 是 AMSL，用各机自己的 ref_alt（EKF 原点海拔）+ 用户填写的高度
   if (action === 'takeoff') {
+    const h = parseFloat(document.getElementById('takeoff-alt').value) || 1.5;
+    if (!u.pos || !Number.isFinite(u.pos.ref_alt)) { alert(`${u.ns} 位置数据未就绪，无法起飞`); return; }
     publishCmd(u, MAV_CMDS.arm);
-    setTimeout(() => publishCmd(u, def), 1000);
+    setTimeout(() => publishCmd(u, { ...def, param7: u.pos.ref_alt + h }), 1000);
     return;
   }
   publishCmd(u, def);
@@ -239,7 +246,7 @@ function publishCmd(u, def) {
   topic.publish(new ROSLIB.Message({
     timestamp: 0,
     param1: def.param1 ?? 0, param2: 0, param3: 0, param4: 0,
-    param5: 0, param6: 0, param7: 0,
+    param5: 0, param6: 0, param7: def.param7 ?? 0,
     command: def.command,
     target_system: u.idx,          // uav_i 的 MAV_SYS_ID = i（实例号 i-1 + 1）
     target_component: 1,
@@ -302,7 +309,7 @@ function updateCard(u) {
   if (u.pos) {
     const s = sharedNed(u);
     f('pos').textContent = s
-      ? `${s.n.toFixed(1)} / ${s.e.toFixed(1)} / ${(-s.d).toFixed(1)} m`
+      ? `${s.n.toFixed(1)} / ${s.e.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`
       : `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
     const h = Math.hypot(u.pos.vx, u.pos.vy);
     f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
@@ -531,8 +538,12 @@ function createMesh(u) {
 const _m4 = new THREE.Matrix4();
 
 function update3D(u) {
+  // 水平位置用共享经纬度；高度用各机本地 -z（相对各自起点）。
+  // 原因: GPS AMSL 估计各机偏差可达数米，直接比较差会出现"有的在地面以下"的假象；
+  // 本地 -z 在 SITL 来自气压计，与真机光流/测距的定高方式更一致
   const s = sharedNed(u);
-  const p = s ? ned2three(s.n, s.e, s.d) : ned2three(u.pos.x, u.pos.y, u.pos.z);
+  const h = -u.pos.z;
+  const p = s ? ned2three(s.n, s.e, -h) : ned2three(u.pos.x, u.pos.y, -h);
   u.mesh.position.copy(p);
   u.label.position.set(p.x, p.y + 0.7, p.z);
   u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;

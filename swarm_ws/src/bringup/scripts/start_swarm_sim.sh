@@ -20,6 +20,8 @@ LOG_DIR="$LOG_BASE/sim_$(date +%Y%m%d_%H%M%S)"
 PID_FILE="$LOG_DIR/pids"
 # 围栏动作（写进各实例 px4-rc.params）: 0=None 1=Warning 2=Hold 3=Return 5=Land
 GF_ACT=${GF_ACT:-3}
+# 返航爬升高度 RTL_RETURN_ALT (m): 0=按当前高度返航，不爬升
+RTL_ALT=${RTL_ALT:-0}
 # 日志轮转: 只保留最近 5 次仿真的日志（pxh> 刷屏极占磁盘，旧日志及时清）
 KEEP_LOGS=5
 
@@ -47,8 +49,8 @@ for i in $(seq 0 $((N - 1))); do
     mkdir -p "$inst_dir"
     # 实例工作目录需要能找到 ROMFS 与 gz 环境
     [ -e "$inst_dir/etc" ] || ln -s "$ROOTFS/etc" "$inst_dir/etc"
-    # 每架独立的 uXRCE session key；地理围栏: 默认越界返航（GF_ACT 环境变量可改）
-    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION %s\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\n' "$sysid" "$GF_ACT" > "$inst_dir/px4-rc.params"
+    # 每架独立的 uXRCE session key；地理围栏(GF_ACT 可改)；返航爬升高度(RTL_ALT 可改，0=不爬升)
+    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION %s\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\nparam set RTL_RETURN_ALT %s\n' "$sysid" "$GF_ACT" "$RTL_ALT" > "$inst_dir/px4-rc.params"
 
     cd "$inst_dir"
     # stdin 必须是"永不 EOF"的输入: 若给 /dev/null，nsh 会读 EOF 死循环刷 pxh> 提示符（几小时能写几十 GB 日志）
