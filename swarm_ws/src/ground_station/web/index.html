@@ -434,7 +434,19 @@ renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // 地面网格与坐标轴 (NED: three.x=东, three.y=上, three.z=-北)
 scene.add(new THREE.GridHelper(20, 20, 0x30363d, 0x21262d));
-const axes = new THREE.AxesHelper(2); scene.add(axes); // x=红=东, y=绿=上, z=蓝=南
+// 原点坐标指示: ROS 风格的右手系 (ENU 语义: X=东, Y=北, Z=上)
+// three 场景内 +X=东, +Y=上, -Z=北（数据映射行列式为+1，整体即右手系）
+const axesOrigin = new THREE.Vector3(0, 0.01, 0);
+function mkAxis(dir, color, text) {
+  scene.add(new THREE.ArrowHelper(dir, axesOrigin, 2, color, 0.35, 0.18));
+  const lb = makeLabel(text, '#' + color.toString(16).padStart(6, '0'));
+  lb.position.copy(dir).multiplyScalar(2.5);
+  lb.scale.set(1.0, 0.26, 1);
+  scene.add(lb);
+}
+mkAxis(new THREE.Vector3(1, 0, 0), 0xff5252, 'X 东');
+mkAxis(new THREE.Vector3(0, 0, -1), 0x4caf50, 'Y 北');
+mkAxis(new THREE.Vector3(0, 1, 0), 0x42a5f5, 'Z 上');
 const homeMark = new THREE.Mesh(
   new THREE.CylinderGeometry(0.4, 0.4, 0.02, 32),
   new THREE.MeshBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.5 }));
