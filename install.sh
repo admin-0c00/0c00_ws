@@ -77,13 +77,17 @@ else
 fi
 
 # ---------- 6. 编译 PX4 SITL ----------
-info "步骤 6/7: 编译 PX4 SITL (px4_sitl + gz_x500) ..."
-make -C "$ROOT/PX4-Autopilot" px4_sitl gz_x500 -j"$(nproc)"
+info "步骤 6/7: 编译 PX4 SITL (px4_sitl_default，仅编译不启动仿真) ..."
+# 注意: 不能用 `make px4_sitl gz_x500`，那个目标编译完会直接启动仿真进程，脚本将永远无法退出
+make -C "$ROOT/PX4-Autopilot" px4_sitl_default -j"$(nproc)"
 
 # ---------- 7. 编译 swarm_ws ----------
 info "步骤 7/7: 编译 ROS 2 工作空间 swarm_ws ..."
+# ROS 的 setup.bash 引用了未定义变量，source 前必须临时关掉 set -u
+set +u
 # shellcheck disable=SC1091
 source /opt/ros/humble/setup.bash
+set -u
 cd "$ROOT/swarm_ws"
 colcon build --symlink-install
 
