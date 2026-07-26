@@ -86,6 +86,17 @@ for (let i = 1; i <= MAX_UAV; i++) {
     const u = getUav(ns, i);
     u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
   });
+  sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
+    const u = getUav(ns, i);
+    u.att = m; u.lastSeen = Date.now();
+    if (u.pos) update3D(u);
+  });
+  sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
+    const u = getUav(ns, i);
+    if (!geoRef && m.lat && m.lon) geoRef = { lat: m.lat, lon: m.lon, alt: m.alt };
+    u.gpos = m; u.lastSeen = Date.now();
+    if (u.pos) { updateCard(u); update3D(u); }
+  });
 }
 
 function sub(ns, topic, type, cb) {
@@ -143,7 +154,10 @@ function updateCard(u) {
     fill.style.background = pct > 50 ? '#3fb950' : pct > 25 ? '#d29922' : '#f85149';
   }
   if (u.pos) {
-    f('pos').textContent = `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
+    const s = sharedNed(u);
+    f('pos').textContent = s
+      ? `${s.n.toFixed(1)} / ${s.e.toFixed(1)} / ${(-s.d).toFixed(1)} m`
+      : `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
     const h = Math.hypot(u.pos.vx, u.pos.vy);
     f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
   }
@@ -211,6 +225,21 @@ const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(5, 10, 3);
 
 function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
 
+// vehicle_local_position 的 x/y 是相对各机自己的 EKF 原点（各机出生点），
+// 集群地图必须用 vehicle_global_position 换算到共享平面坐标（公共原点 = 第一架上报的经纬高）
+let geoRef = null;
+const EARTH_R = 6378137;
+function sharedNed(u) {
+  if (!u.gpos || !geoRef) return null;
+  const dLat = (u.gpos.lat - geoRef.lat) * Math.PI / 180;
+  const dLon = (u.gpos.lon - geoRef.lon) * Math.PI / 180;
+  return {
+    n: dLat * EARTH_R,
+    e: dLon * EARTH_R * Math.cos(geoRef.lat * Math.PI / 180),
+    d: -(u.gpos.alt - geoRef.alt),
+  };
+}
+
 function makeLabel(text, cssColor) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -222,20 +251,34 @@ function makeLabel(text, cssColor) {
 }
 
 function createMesh(u) {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(
-    new THREE.ConeGeometry(0.18, 0.5, 4),
-    new THREE.MeshStandardMaterial({ color: u.color }));
-  body.rotation.x = Math.PI; // 尖端朝下
-  group.add(body);
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.42, 0.02, 8, 32),
-    new THREE.MeshBasicMaterial({ color: u.color }));
-  ring.rotation.x = Math.PI / 2;
-  group.add(ring);
-  u.label = makeLabel(u.ns, u.css);
-  u.label.position.set(0, 0.7, 0);
-  group.add(u.label);
+  const group = new THREE.Group();      // 外层: 只负责位置
+  const frame = new THREE.Group();      // 内层: 负责姿态 (local: x=机头, y=右翼, z=下)
+  group.add(frame);
+  const mat = new THREE.MeshStandardMaterial({ color: u.color });
+  // X 型机臂（水平面内）
+  const armGeom = new THREE.BoxGeometry(0.9, 0.05, 0.05);
+  const arm1 = new THREE.Mesh(armGeom, mat); arm1.rotation.z = Math.PI / 4; frame.add(arm1);
+  const arm2 = new THREE.Mesh(armGeom, mat); arm2.rotation.z = -Math.PI / 4; frame.add(arm2);
+  // 中心机身
+  frame.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.08), mat));
+  // 四个电机
+  const motorGeom = new THREE.CylinderGeometry(0.06, 0.06, 0.08, 12);
+  for (const [mx, my] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const motor = new THREE.Mesh(motorGeom, mat);
+    motor.rotation.x = Math.PI / 2; // 转轴沿 local z
+    motor.position.set(mx * 0.318, my * 0.318, 0);
+    frame.add(motor);
+  }
+  // 机头方向指示（白色圆锥，锥尖朝 local +X）
+  const nose = new THREE.Mesh(
+    new THREE.ConeGeometry(0.08, 0.25, 12),
+    new THREE.MeshStandardMaterial({ color: 0xffffff }));
+  nose.rotation.z = -Math.PI / 2;
+  nose.position.set(0.35, 0, 0);
+  frame.add(nose);
+  u.frame = frame;
+  u.label = makeLabel(u.ns, u.css);     // 标签挂场景，不随姿态翻转
+  scene.add(u.label);
   u.mesh = group;
   scene.add(group);
 
@@ -246,10 +289,30 @@ function createMesh(u) {
   scene.add(u.trail);
 }
 
+// PX4 vehicle_attitude.q = [w,x,y,z]，表示机体(FRD) -> NED 的旋转。
+// three 坐标系 = M * NED（M: three_x=东, three_y=上=-下, three_z=-北），
+// 因此 three 下的旋转矩阵 R' = M * R，即 R' 的三行分别为 R 的第2行、-第3行、-第1行。
+const _m4 = new THREE.Matrix4();
+
 function update3D(u) {
-  const p = ned2three(u.pos.x, u.pos.y, u.pos.z);
+  const s = sharedNed(u);
+  const p = s ? ned2three(s.n, s.e, s.d) : ned2three(u.pos.x, u.pos.y, u.pos.z);
   u.mesh.position.copy(p);
-  u.mesh.rotation.y = -u.pos.heading; // NED 航向 -> three 坐标
+  u.label.position.set(p.x, p.y + 0.7, p.z);
+  if (u.att && u.att.q) {
+    const [w, x, y, z] = u.att.q;
+    const r00 = 1 - 2 * (y * y + z * z), r01 = 2 * (x * y - z * w),     r02 = 2 * (x * z + y * w);
+    const r10 = 2 * (x * y + z * w),     r11 = 1 - 2 * (x * x + z * z), r12 = 2 * (y * z - x * w);
+    const r20 = 2 * (x * z - y * w),     r21 = 2 * (y * z + x * w),     r22 = 1 - 2 * (x * x + y * y);
+    _m4.set(
+       r10,  r11,  r12, 0,
+      -r20, -r21, -r22, 0,
+      -r00, -r01, -r02, 0,
+       0, 0, 0, 1);
+    u.frame.quaternion.setFromRotationMatrix(_m4);
+  } else {
+    u.frame.rotation.set(0, -u.pos.heading, 0); // 姿态数据未到时只用航向
+  }
   const last = u.trailPts[u.trailPts.length - 1];
   if (!last || last.distanceTo(p) > 0.05) {
     u.trailPts.push(p.clone());
