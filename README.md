@@ -16,7 +16,7 @@
 ## 一键安装
 
 ```bash
-git clone <本仓库地址>
+git clone https://gitee.com/admin_0c00/0c00_ws.git
 cd 0c00_ws
 ./install.sh
 ```
