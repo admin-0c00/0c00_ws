@@ -17,7 +17,7 @@
 
 ```bash
 git clone <本仓库地址>
-cd SwarmCore-Sim
+cd 0c00_ws
 ./install.sh
 ```
 
@@ -32,13 +32,13 @@ Python 依赖（清华 pip 镜像）→ MicroXRCEAgent → PX4 SITL 编译 → s
 
 ```bash
 source /opt/ros/humble/setup.bash
-source ~/SwarmCore-Sim/swarm_ws/install/setup.bash   # 按实际 clone 路径调整
+source ~/0c00_ws/swarm_ws/install/setup.bash   # 按实际 clone 路径调整
 ```
 
 启动 3 机仿真（第 2 个参数 0 = 无头模式，1 = 带 Gazebo 界面）：
 
 ```bash
-~/SwarmCore-Sim/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 3 0
+~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 3 0
 ```
 
 起飞：
@@ -50,21 +50,21 @@ ros2 run bringup swarm_takeoff.py     # 或按 bringup 包内说明
 Web 地面站（状态卡片 + 3D 地图）：
 
 ```bash
-~/SwarmCore-Sim/swarm_ws/src/ground_station/scripts/start_ground_station.sh
+~/0c00_ws/swarm_ws/src/ground_station/scripts/start_ground_station.sh
 # 浏览器打开 http://localhost:8080
 ```
 
 停止：
 
 ```bash
-~/SwarmCore-Sim/swarm_ws/src/bringup/scripts/stop_swarm_sim.sh
-~/SwarmCore-Sim/swarm_ws/src/ground_station/scripts/stop_ground_station.sh
+~/0c00_ws/swarm_ws/src/bringup/scripts/stop_swarm_sim.sh
+~/0c00_ws/swarm_ws/src/ground_station/scripts/stop_ground_station.sh
 ```
 
 ## 目录结构
 
 ```
-SwarmCore-Sim/
+0c00_ws/
 ├── install.sh                # 一键安装脚本
 ├── PX4-Autopilot/            # PX4 v1.15.4（子模块已拍平，tag v1.15.4 保留供版本检测）
 ├── Micro-XRCE-DDS-Agent/     # DDS 桥源码

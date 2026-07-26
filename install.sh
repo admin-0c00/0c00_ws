@@ -1,7 +1,7 @@
 #!/bin/bash
 # SwarmCore-Sim 一键安装脚本
 # 目标环境: Ubuntu 22.04 (Jammy) x86_64
-# 用法: git clone <本仓库> && cd SwarmCore-Sim && ./install.sh
+# 用法: git clone <本仓库> && cd 0c00_ws && ./install.sh
 set -euo pipefail
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
