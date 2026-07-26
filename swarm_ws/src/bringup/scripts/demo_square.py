@@ -70,7 +70,7 @@ class Demo(Node):
         self.armed = m.arming_state == VehicleStatus.ARMING_STATE_ARMED      # 2 = 已解锁
         self.offboard = m.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD  # 14 = Offboard
 
-    def setpoint(self, n, e, yaw=0.0):
+    def setpoint(self, n, e, z, yaw=0.0):
         """发一拍位置设定点。Offboard 模式要求设定点持续发送（>=2Hz），断流飞机会自动降落"""
         ts = int(time.time() * 1e6)  # PX4 时间戳：微秒
         mode = OffboardControlMode()
@@ -78,7 +78,7 @@ class Demo(Node):
         mode.timestamp = ts
         self.pub_mode.publish(mode)
         sp = TrajectorySetpoint()
-        sp.position = [float(n), float(e), -TAKEOFF_ALT]  # 目标点（北, 东, 下）
+        sp.position = [float(n), float(e), float(z)]  # 目标点（北, 东, 下）
         sp.yaw = float(yaw)          # 机头朝向（0=北，π/2=东），让机头跟着航段转
         sp.timestamp = ts
         self.pub_sp.publish(sp)
@@ -95,15 +95,15 @@ class Demo(Node):
         self.pub_cmd.publish(m)
 
 
-def fly_to(node, n, e, yaw=0.0):
-    """持续发设定点，直到飞机到达 (n, e) 附近（水平/垂直误差都小于 TOL）"""
+def fly_to(node, n, e, z, yaw=0.0):
+    """持续发设定点，直到飞机到达 (n, e, z) 附近（水平/垂直误差都小于 TOL）"""
     while rclpy.ok():
-        node.setpoint(n, e, yaw)
+        node.setpoint(n, e, z, yaw)
         rclpy.spin_once(node, timeout_sec=0.1)
         if node.pos is None:
             continue
         d_xy = math.hypot(node.pos[0] - n, node.pos[1] - e)
-        d_z = abs(node.pos[2] + TAKEOFF_ALT)
+        d_z = abs(node.pos[2] - z)
         if d_xy < TOL and d_z < TOL:
             return
 
@@ -120,12 +120,17 @@ def main():
 
     # ---------- 1. 进入 Offboard 并解锁 ----------
     # PX4 规定：必须先连续收到一段设定点流，才允许切 Offboard，所以先发 1 秒再请求
+    # 重要：EKF 的高度原点可能有偏差（尤其仿真/室内），
+    # 所以目标高度 = 起飞前实测高度 - 想爬的高度（NED 里下为正），而不是写死的绝对值
+    z_target = node.pos[2] - TAKEOFF_ALT
+    log(f"地面实测 z {node.pos[2]:.2f} m，目标 z {z_target:.2f} m")
+
     log("预发设定点，然后请求 Offboard 模式 + 解锁…")
     for _ in range(10):
-        node.setpoint(0, 0)
+        node.setpoint(0, 0, z_target)
         rclpy.spin_once(node, timeout_sec=0.1)
     while not (node.offboard and node.armed):
-        node.setpoint(0, 0)   # 请求期间设定点不能断
+        node.setpoint(0, 0, z_target)   # 请求期间设定点不能断
         node.command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)       # 切 Offboard（主模式 6）
         node.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)   # 解锁
         rclpy.spin_once(node, timeout_sec=0.5)
@@ -141,7 +146,7 @@ def main():
     for n, e, desc in legs:
         log(f">>> {desc}")
         yaw = math.atan2(e - prev[1], n - prev[0])  # 机头对准航段方向
-        fly_to(node, n, e, yaw)
+        fly_to(node, n, e, z_target, yaw)
         prev = (n, e)
 
     # ---------- 3. 原地降落，直到自动上锁 ----------

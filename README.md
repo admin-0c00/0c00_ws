@@ -51,7 +51,8 @@ ros2 run bringup swarm_takeoff.py     # 或按 bringup 包内说明
 
 ```bash
 # 先启动单机仿真: ~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 1 1
-python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square.py
+python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square.py      # NED 坐标版
+python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square_enu.py  # ENU 坐标版（ROS 习惯，推荐新手）
 # 可调: --ros-args -p takeoff_alt:=2.0 -p side:=3.0
 ```
 
