@@ -1,6 +1,5 @@
 build/
-i
-stall/
+install/
 log/
 logs/
 *.pyc
