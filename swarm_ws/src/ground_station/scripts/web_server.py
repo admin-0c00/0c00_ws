@@ -47,7 +47,8 @@ async def handler(connection):
         await connection.close(1008, "only /ws")
         return
     try:
-        async with connect(ROSBRIDGE) as upstream:
+        # 本机上游无需 keepalive；rosbridge 高负载时回 ping 慢，默认 20s 超时会误杀连接
+        async with connect(ROSBRIDGE, ping_interval=None) as upstream:
             async def down():  # 浏览器 -> rosbridge
                 async for msg in connection:
                     await upstream.send(msg)
@@ -68,8 +69,10 @@ async def handler(connection):
 
 
 async def main():
+    # 浏览器侧 keepalive 放宽: 页面高负载时回 pong 可能较慢，超时收紧会误杀
     async with serve(handler, "0.0.0.0", LISTEN_PORT,
-                     process_request=process_request):
+                     process_request=process_request,
+                     ping_interval=30, ping_timeout=120):
         print(f"[web_server] http://0.0.0.0:{LISTEN_PORT} "
               f"(静态: {WEB_DIR}, /ws -> {ROSBRIDGE})")
         await asyncio.get_running_loop().create_future()  # run forever

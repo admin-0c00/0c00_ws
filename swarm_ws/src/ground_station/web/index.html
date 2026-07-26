@@ -145,11 +145,11 @@ function setupRos() {
     sub(ns, 'vehicle_status', 'px4_msgs/msg/VehicleStatus', (m) => {
       const u = getUav(ns, i);
       u.status = m; u.lastSeen = Date.now(); updateCard(u);
-    });
+    }, 500);
     sub(ns, 'battery_status', 'px4_msgs/msg/BatteryStatus', (m) => {
       const u = getUav(ns, i);
       u.battery = m; u.lastSeen = Date.now(); updateCard(u);
-    });
+    }, 500);
     sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
       const u = getUav(ns, i);
       // GPS 共享模式的坐标原点 = uav_1 的 EKF 原点（起始位置）
@@ -157,17 +157,17 @@ function setupRos() {
         geoRef = { lat: m.ref_lat, lon: m.ref_lon, alt: m.ref_alt };
       }
       u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
-    });
+    }, 100);
     sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
       const u = getUav(ns, i);
       u.att = m; u.lastSeen = Date.now();
       if (u.pos) update3D(u);
-    });
+    }, 100);
     sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
       const u = getUav(ns, i);
       u.gpos = m; u.lastSeen = Date.now();   // GPS 共享模式的经纬度来源
       if (u.pos) { updateCard(u); update3D(u); }
-    });
+    }, 200);
   }
   // 记录状态订阅
   new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe(recStatusHandler);
@@ -176,8 +176,13 @@ function setupRos() {
   Object.values(cmdTopics).forEach((t) => t.advertise());
 }
 
-function sub(ns, topic, type, cb) {
-  new ROSLIB.Topic({ ros, name: `/${ns}/fmu/out/${topic}`, messageType: type }).subscribe(cb);
+// 话题限流: PX4 多数话题 ~100Hz，全速转发会把 rosbridge 的 JSON 序列化压垮（100% CPU 饿死），
+// 显示端 10Hz/2Hz 足够，throttle_rate 单位 ms
+function sub(ns, topic, type, cb, throttle = 100) {
+  new ROSLIB.Topic({
+    ros, name: `/${ns}/fmu/out/${topic}`, messageType: type,
+    throttle_rate: throttle, queue_length: 1,
+  }).subscribe(cb);
 }
 
 function getUav(ns, idx) {
