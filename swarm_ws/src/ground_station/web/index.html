@@ -41,8 +41,8 @@
   .gbtn.danger:hover, .cbtn.danger:hover { background: #5c2424; }
   .ctl-row { display: flex; gap: 6px; margin-top: 8px; }
   .ctl-row .cbtn { flex: 1; padding: 4px 0; }
-  #fence-ctl, #takeoff-ctl { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
-  #fence-action { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 3px 6px; font-size: 12px; }
+  #fence-ctl, #takeoff-ctl, #coord-ctl { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+  #fence-action, #coord-mode { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 3px 6px; font-size: 12px; }
   #takeoff-alt { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 3px 6px; font-size: 12px; width: 58px; }
   .tab-bar { display: flex; gap: 6px; }
   .tab-btn { flex: 1; background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 5px 0; font-size: 13px; cursor: pointer; }
@@ -66,6 +66,12 @@
     <button class="gbtn" data-cmd="rtl">全部返航</button>
     <button class="gbtn" data-cmd="land">全部降落</button>
     <button class="gbtn danger" data-cmd="disarm">全部上锁</button>
+    <label id="coord-ctl">坐标系:
+      <select id="coord-mode">
+        <option value="gps" selected>GPS 共享</option>
+        <option value="local">本机/UWB</option>
+      </select>
+    </label>
     <label id="fence-ctl">围栏动作:
       <select id="fence-action">
         <option value="off">关闭</option>
@@ -146,12 +152,21 @@ function setupRos() {
     });
     sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
       const u = getUav(ns, i);
+      // GPS 共享模式的坐标原点 = uav_1 的 EKF 原点（起始位置）
+      if (!geoRef && ns === 'uav_1' && m.xy_global && m.ref_lat) {
+        geoRef = { lat: m.ref_lat, lon: m.ref_lon, alt: m.ref_alt };
+      }
       u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
     });
     sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
       const u = getUav(ns, i);
       u.att = m; u.lastSeen = Date.now();
       if (u.pos) update3D(u);
+    });
+    sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
+      const u = getUav(ns, i);
+      u.gpos = m; u.lastSeen = Date.now();   // GPS 共享模式的经纬度来源
+      if (u.pos) { updateCard(u); update3D(u); }
     });
   }
   // 记录状态订阅
@@ -192,7 +207,7 @@ function createCard(u) {
       <span class="k">飞行模式</span><span class="v" data-f="mode">-</span>
       <span class="k">电量</span><span class="v" data-f="bat">-</span>
       <span class="k">电压/电流</span><span class="v" data-f="volt">-</span>
-      <span class="k">位置 N/E/高(起点)</span><span class="v" data-f="pos">-</span>
+      <span class="k">位置 N/E/高</span><span class="v" data-f="pos">-</span>
       <span class="k">速度 水平/垂直</span><span class="v" data-f="vel">-</span>
     </div>
     <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>
@@ -308,7 +323,8 @@ function updateCard(u) {
     fill.style.background = pct > 50 ? '#3fb950' : pct > 25 ? '#d29922' : '#f85149';
   }
   if (u.pos) {
-    f('pos').textContent = `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
+    const ne = uavNe(u);
+    f('pos').textContent = `${ne.n.toFixed(1)} / ${ne.e.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
     const h = Math.hypot(u.pos.vx, u.pos.vy);
     f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
   }
@@ -448,6 +464,37 @@ scene.add(fenceTop);
 
 function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
 
+// ---- 坐标系模式 ----
+// local(本机/UWB): 各机本地坐标即全局坐标（UWB 世界系各机同原点），直接使用
+// gps(GPS 共享):   GPS 场景各机 EKF 原点不同，用经纬度换算到共享平面（原点 = uav_1 的 EKF 原点）
+let geoRef = null;
+const EARTH_R = 6378137;
+const coordModeSel = document.getElementById('coord-mode');
+coordModeSel.value = localStorage.getItem('coordMode') || 'gps';
+coordModeSel.addEventListener('change', () => {
+  localStorage.setItem('coordMode', coordModeSel.value);
+  for (const u of Object.values(uavs)) u.trailPts = [];  // 切换后清轨迹，避免跨坐标系连线
+});
+
+function sharedNed(u) {
+  if (!u.gpos || !geoRef) return null;
+  const dLat = (u.gpos.lat - geoRef.lat) * Math.PI / 180;
+  const dLon = (u.gpos.lon - geoRef.lon) * Math.PI / 180;
+  return {
+    n: dLat * EARTH_R,
+    e: dLon * EARTH_R * Math.cos(geoRef.lat * Math.PI / 180),
+  };
+}
+
+// 当前模式下各机的水平 NED 坐标
+function uavNe(u) {
+  if (coordModeSel.value === 'gps') {
+    const s = sharedNed(u);
+    if (s) return s;
+  }
+  return { n: u.pos.x, e: u.pos.y };
+}
+
 function makeLabel(text, cssColor) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -521,8 +568,9 @@ function createMesh(u) {
 const _m4 = new THREE.Matrix4();
 
 function update3D(u) {
-  // 位置与高度直接用飞控上报的本地坐标（vehicle_local_position，NED）
-  const p = ned2three(u.pos.x, u.pos.y, u.pos.z);
+  // XY 按所选坐标系（GPS 共享 / 本机UWB），高度始终用本地 -z（相对各机起点）
+  const ne = uavNe(u);
+  const p = ned2three(ne.n, ne.e, u.pos.z);
   u.mesh.position.copy(p);
   u.label.position.set(p.x, p.y + 0.7, p.z);
   u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;
