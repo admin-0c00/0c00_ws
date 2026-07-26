@@ -124,8 +124,12 @@ if (os.path.exists('src/modules/mavlink/mavlink/.git')):
     mavlink_git_version = subprocess.check_output('git rev-parse --verify HEAD'.split(),
                                       cwd='src/modules/mavlink/mavlink', stderr=subprocess.STDOUT).decode('utf-8').strip()
     mavlink_git_version_short = mavlink_git_version[0:16]
+else:
+    # SwarmCore-Sim snapshot: mavlink is flattened into the tree, no own git repo
+    mavlink_git_version = '0' * 40
+    mavlink_git_version_short = '0' * 16
 
-    header += f"""
+header += f"""
 #define MAVLINK_LIB_GIT_VERSION_STR  "{mavlink_git_version}"
 #define MAVLINK_LIB_GIT_VERSION_BINARY 0x{mavlink_git_version_short}
 """
