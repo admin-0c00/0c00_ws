@@ -173,6 +173,17 @@ const cmdTopics = {};
 function sendCmd(u, action) {
   const def = MAV_CMDS[action];
   if (!def) return;
+  // PX4 的起飞命令只负责切到 AUTO_TAKEOFF 模式，未解锁时不会执行；
+  // 因此起飞 = 先解锁，1 秒后再发起飞（已解锁时 arm 是无害的重复命令）
+  if (action === 'takeoff') {
+    publishCmd(u, MAV_CMDS.arm);
+    setTimeout(() => publishCmd(u, def), 1000);
+    return;
+  }
+  publishCmd(u, def);
+}
+
+function publishCmd(u, def) {
   const name = `/${u.ns}/fmu/in/vehicle_command`;
   const topic = cmdTopics[name] || (cmdTopics[name] = (() => {
     const t = new ROSLIB.Topic({ ros, name, messageType: 'px4_msgs/msg/VehicleCommand' });
