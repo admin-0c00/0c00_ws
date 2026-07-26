@@ -313,10 +313,10 @@ function updateCard(u) {
   }
   if (u.pos) {
     const s = sharedNed(u);
-    const h = (u.gpos && groundAlt !== null) ? u.gpos.alt - groundAlt : -u.pos.z;
+    const hgt = (u.gpos && groundAlt !== null) ? u.gpos.alt - groundAlt : -u.pos.z;
     f('pos').textContent = s
-      ? `${s.n.toFixed(1)} / ${s.e.toFixed(1)} / ${h.toFixed(1)} m`
-      : `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${h.toFixed(1)} m`;
+      ? `${s.n.toFixed(1)} / ${s.e.toFixed(1)} / ${hgt.toFixed(1)} m`
+      : `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${hgt.toFixed(1)} m`;
     const h = Math.hypot(u.pos.vx, u.pos.vy);
     f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
   }
