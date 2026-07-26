@@ -22,6 +22,10 @@ PID_FILE="$LOG_DIR/pids"
 GF_ACT=${GF_ACT:-3}
 # 返航爬升高度 RTL_RETURN_ALT (m): 0=按当前高度返航，不爬升
 RTL_ALT=${RTL_ALT:-0}
+# EKF 高度参考 EKF2_HGT_REF: 0=气压计 1=GPS(默认) 2=测距 3=视觉
+# SensorGpsSim 的高度噪声已从 0.5m 降到 0.02m（仿真 GPS 高度≈真值），
+# 因此直接用 GPS 作高度参考即可，气压计路径不再使用
+HGT_REF=${HGT_REF:-1}
 # 日志轮转: 只保留最近 5 次仿真的日志（pxh> 刷屏极占磁盘，旧日志及时清）
 KEEP_LOGS=5
 
@@ -49,8 +53,9 @@ for i in $(seq 0 $((N - 1))); do
     mkdir -p "$inst_dir"
     # 实例工作目录需要能找到 ROMFS 与 gz 环境
     [ -e "$inst_dir/etc" ] || ln -s "$ROOTFS/etc" "$inst_dir/etc"
-    # 每架独立的 uXRCE session key；地理围栏(GF_ACT 可改)；返航爬升高度(RTL_ALT 可改，0=不爬升)
-    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION %s\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\nparam set RTL_RETURN_ALT %s\n' "$sysid" "$GF_ACT" "$RTL_ALT" > "$inst_dir/px4-rc.params"
+    # 每架独立的 uXRCE session key；围栏(GF_ACT)；返航高度(RTL_ALT)；EKF 高度参考(HGT_REF，默认 GPS)
+    # 注意: 参数是持久化的，所有改过的项必须显式写出，否则沿用上次运行的值
+    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION %s\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\nparam set RTL_RETURN_ALT %s\nparam set EKF2_HGT_REF %s\nparam set EKF2_GPS_CTRL 7\n' "$sysid" "$GF_ACT" "$RTL_ALT" "$HGT_REF" > "$inst_dir/px4-rc.params"
 
     cd "$inst_dir"
     # stdin 必须是"永不 EOF"的输入: 若给 /dev/null，nsh 会读 EOF 死循环刷 pxh> 提示符（几小时能写几十 GB 日志）

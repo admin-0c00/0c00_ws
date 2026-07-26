@@ -116,7 +116,9 @@ void SensorGpsSim::Run()
 
 		double latitude = gpos.lat + math::degrees((double)generate_wgn() * 0.2 / CONSTANTS_RADIUS_OF_EARTH);
 		double longitude = gpos.lon + math::degrees((double)generate_wgn() * 0.2 / CONSTANTS_RADIUS_OF_EARTH);
-		double altitude = (double)(gpos.alt + (generate_wgn() * 0.5f));
+		// SwarmCore 修改: 高度噪声 0.5m -> 0.02m。本集群真机用 UWB/光流定位（厘米~分米级），
+		// 仿真 GPS 高度噪声过大会导致各机 EKF 高度原点各漂各的，地面站显示不一致
+		double altitude = (double)(gpos.alt + (generate_wgn() * 0.02f));
 
 		Vector3f gps_vel = Vector3f{lpos.vx, lpos.vy, lpos.vz} + noiseGauss3f(0.06f, 0.077f, 0.158f);
 
@@ -134,8 +136,10 @@ void SensorGpsSim::Run()
 			sensor_gps.fix_type = 3; // 3D fix
 			sensor_gps.s_variance_m_s = 0.4f;
 			sensor_gps.c_variance_rad = 0.1f;
-			sensor_gps.eph = 0.9f;
-			sensor_gps.epv = 1.78f;
+			// SwarmCore 修改: 上报精度与已降低的实际噪声匹配（原 eph 0.9 / epv 1.78），
+			// 否则 EKF 不信任干净的 GPS，气压计/IMU 偏差会把高度带跑
+			sensor_gps.eph = 0.05f;
+			sensor_gps.epv = 0.1f;
 			sensor_gps.hdop = 0.7f;
 			sensor_gps.vdop = 1.1f;
 

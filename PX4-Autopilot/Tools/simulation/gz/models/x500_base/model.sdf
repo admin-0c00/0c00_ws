@@ -288,6 +288,19 @@
       <sensor name="navsat_sensor" type="navsat">
         <always_on>1</always_on>
         <update_rate>30</update_rate>
+        <navsat>
+          <position_sensing>
+            <vertical>
+              <!-- 垂直位置噪声置零: 默认噪声导致各实例 GPS 高度各漂各的(米级)，
+                   地面站显示有的飞机在地面以下；本集群真机用 UWB/光流定位，
+                   仿真用"干净 GPS 高度"更接近真实传感器水平 -->
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0</stddev>
+              </noise>
+            </vertical>
+          </position_sensing>
+        </navsat>
       </sensor>
     </link>
     <link name="rotor_0">
