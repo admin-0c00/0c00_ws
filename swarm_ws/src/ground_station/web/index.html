@@ -102,6 +102,10 @@ for (let i = 1; i <= MAX_UAV; i++) {
   });
   sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
     const u = getUav(ns, i);
+    // 共享坐标原点固定为 uav_1 的 EKF 原点（= 它的起始位置，不随飞行改变，与页面何时打开无关）
+    if (!geoRef && ns === 'uav_1' && m.xy_global && m.ref_lat) {
+      geoRef = { lat: m.ref_lat, lon: m.ref_lon, alt: m.ref_alt };
+    }
     u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
   });
   sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
@@ -111,7 +115,6 @@ for (let i = 1; i <= MAX_UAV; i++) {
   });
   sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
     const u = getUav(ns, i);
-    if (!geoRef && ns === 'uav_1' && m.lat && m.lon) geoRef = { lat: m.lat, lon: m.lon, alt: m.alt };
     u.gpos = m; u.lastSeen = Date.now();
     if (u.pos) { updateCard(u); update3D(u); }
   });
@@ -360,7 +363,7 @@ scene.add(fenceTop);
 function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
 
 // vehicle_local_position 的 x/y 是相对各机自己的 EKF 原点（各机出生点），
-// 集群地图必须用 vehicle_global_position 换算到共享平面坐标（公共原点 = 第一架上报的经纬高）
+// 集群地图必须用 vehicle_global_position 换算到共享平面坐标（公共原点 = uav_1 的 EKF 原点，即其起始位置）
 let geoRef = null;
 const EARTH_R = 6378137;
 function sharedNed(u) {
