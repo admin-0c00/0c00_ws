@@ -35,7 +35,9 @@
 #
 # We depend on our submodules, so we have to prevent attempts to
 # compile without it being present.
-ifeq ($(wildcard .git),)
+# SwarmCore-Sim snapshot: also accept a git repo one level up (flattened
+# distribution where submodules are already inlined in the parent repo).
+ifeq ($(wildcard .git ../.git),)
     $(error YOU HAVE TO USE GIT TO DOWNLOAD THIS REPOSITORY. ABORTING.)
 endif
 
