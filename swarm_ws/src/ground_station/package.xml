@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ground_station</name>
+  <version>0.1.0</version>
+  <description>SwarmCore Web 地面站：无人机状态监视（电量/位置/速度）+ 3D 地图（rosbridge + Three.js）</description>
+  <maintainer email="dev@lcw.local">SwarmCore</maintainer>
+  <license>BSD-3-Clause</license>
+
+  <exec_depend>rosbridge_server</exec_depend>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

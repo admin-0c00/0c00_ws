@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>SwarmCore 地面站</title>
+<script src="lib/roslib.min.js"></script>
+<script src="lib/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
+  #header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #161b22; border-bottom: 1px solid #30363d; }
+  #header h1 { font-size: 16px; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #f85149; }
+  .dot.ok { background: #3fb950; }
+  #conn-text { font-size: 13px; color: #8b949e; }
+  #main { display: flex; height: calc(100vh - 41px); }
+  #sidebar { width: 340px; min-width: 340px; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; background: #0d1117; }
+  #view3d { flex: 1; position: relative; }
+  #view3d canvas { display: block; }
+  #hint { position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #8b949e; user-select: none; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; }
+  .card.stale { opacity: 0.45; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .card-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .color-chip { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: #30363d; color: #8b949e; }
+  .badge.armed { background: #9e3a3a; color: #ffb3b3; }
+  .badge.offboard { background: #1f6feb; color: #cfe5ff; }
+  .kv { display: grid; grid-template-columns: 84px 1fr; row-gap: 3px; font-size: 13px; }
+  .kv .k { color: #8b949e; }
+  .kv .v { font-family: "JetBrains Mono", Consolas, monospace; }
+  .bat-bar { height: 8px; border-radius: 4px; background: #30363d; overflow: hidden; margin-top: 4px; }
+  .bat-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
+  #empty { color: #8b949e; font-size: 13px; text-align: center; margin-top: 30px; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>SwarmCore 地面站</h1>
+  <div class="dot" id="conn-dot"></div>
+  <span id="conn-text">连接 rosbridge...</span>
+</div>
+<div id="main">
+  <div id="sidebar"><div id="empty">等待无人机数据…<br>请先启动仿真 (start_swarm_sim.sh)</div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向</div></div>
+</div>
+
+<script>
+// ============================== 配置 ==============================
+const ROSBRIDGE_URL = `ws://${location.hostname}:9090`;
+const MAX_UAV = 6;
+const COLORS = [0xff5252, 0x4caf50, 0x42a5f5, 0xff9800, 0xab47bc, 0x26c6da];
+const CSS_COLORS = ['#ff5252', '#4caf50', '#42a5f5', '#ff9800', '#ab47bc', '#26c6da'];
+const NAV_STATES = {
+  0: 'MANUAL', 1: 'ALTITUDE', 2: 'POSITION', 3: 'AUTO_MISSION', 4: 'HOLD',
+  5: 'AUTO_RTL', 6: 'POSITION_SLOW', 10: 'ACRO', 14: 'OFFBOARD',
+  15: 'STABILIZED', 17: 'AUTO_TAKEOFF', 18: 'AUTO_LAND', 19: 'AUTO_FOLLOW_TARGET',
+};
+const TRAIL_LEN = 600;
+
+// ============================== 状态 ==============================
+const uavs = {}; // ns -> {status, battery, pos, lastSeen, card, mesh, label, trail...}
+const ros = new ROSLIB.Ros({ url: ROSBRIDGE_URL });
+
+ros.on('connection', () => setConn(true));
+ros.on('close', () => { setConn(false); setTimeout(() => ros.connect(ROSBRIDGE_URL), 2000); });
+ros.on('error', () => setConn(false));
+
+function setConn(ok) {
+  document.getElementById('conn-dot').className = ok ? 'dot ok' : 'dot';
+  document.getElementById('conn-text').textContent = ok ? 'rosbridge 已连接' : 'rosbridge 断开, 重连中…';
+}
+
+// ============================== 订阅 ==============================
+for (let i = 1; i <= MAX_UAV; i++) {
+  const ns = `uav_${i}`;
+  sub(ns, 'vehicle_status', 'px4_msgs/msg/VehicleStatus', (m) => {
+    const u = getUav(ns, i);
+    u.status = m; u.lastSeen = Date.now(); updateCard(u);
+  });
+  sub(ns, 'battery_status', 'px4_msgs/msg/BatteryStatus', (m) => {
+    const u = getUav(ns, i);
+    u.battery = m; u.lastSeen = Date.now(); updateCard(u);
+  });
+  sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
+    const u = getUav(ns, i);
+    u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
+  });
+}
+
+function sub(ns, topic, type, cb) {
+  new ROSLIB.Topic({ ros, name: `/${ns}/fmu/out/${topic}`, messageType: type }).subscribe(cb);
+}
+
+function getUav(ns, idx) {
+  if (!uavs[ns]) {
+    uavs[ns] = { ns, idx, color: COLORS[(idx - 1) % COLORS.length], css: CSS_COLORS[(idx - 1) % CSS_COLORS.length], trailPts: [] };
+    createCard(uavs[ns]); createMesh(uavs[ns]);
+    document.getElementById('empty')?.remove();
+  }
+  return uavs[ns];
+}
+
+// ============================== 状态卡片 ==============================
+const sidebar = document.getElementById('sidebar');
+
+function createCard(u) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `
+    <div class="card-head">
+      <div class="card-title"><span class="color-chip" style="background:${u.css}"></span>${u.ns}</div>
+      <span class="badge" data-f="badge">待机</span>
+    </div>
+    <div class="kv">
+      <span class="k">飞行模式</span><span class="v" data-f="mode">-</span>
+      <span class="k">电量</span><span class="v" data-f="bat">-</span>
+      <span class="k">电压/电流</span><span class="v" data-f="volt">-</span>
+      <span class="k">位置 N/E/Alt</span><span class="v" data-f="pos">-</span>
+      <span class="k">速度 水平/垂直</span><span class="v" data-f="vel">-</span>
+    </div>
+    <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>`;
+  sidebar.appendChild(el);
+  u.card = el;
+}
+
+function updateCard(u) {
+  const f = (k) => u.card.querySelector(`[data-f="${k}"]`);
+  if (u.status) {
+    const armed = u.status.arming_state === 2;
+    const offboard = u.status.nav_state === 14;
+    const b = f('badge');
+    b.textContent = armed ? '已解锁' : '已上锁';
+    b.className = 'badge' + (armed ? ' armed' : '') + (offboard ? ' offboard' : '');
+    f('mode').textContent = NAV_STATES[u.status.nav_state] ?? `MODE_${u.status.nav_state}`;
+  }
+  if (u.battery) {
+    const pct = Math.round((u.battery.remaining ?? 0) * 100);
+    f('bat').textContent = `${pct} %`;
+    f('volt').textContent = `${u.battery.voltage_v.toFixed(2)} V / ${u.battery.current_a.toFixed(2)} A`;
+    const fill = f('batfill');
+    fill.style.width = `${pct}%`;
+    fill.style.background = pct > 50 ? '#3fb950' : pct > 25 ? '#d29922' : '#f85149';
+  }
+  if (u.pos) {
+    f('pos').textContent = `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
+    const h = Math.hypot(u.pos.vx, u.pos.vy);
+    f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
+  }
+}
+
+// 掉线检测
+setInterval(() => {
+  for (const u of Object.values(uavs)) {
+    u.card.classList.toggle('stale', Date.now() - u.lastSeen > 3000);
+  }
+}, 1000);
+
+// ============================== 3D 视图 ==============================
+const container = document.getElementById('view3d');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0d1117);
+scene.fog = new THREE.Fog(0x0d1117, 40, 120);
+
+const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+let camTheta = Math.PI / 4, camPhi = Math.PI / 3.2, camDist = 18;
+const camTarget = new THREE.Vector3(0, 1.5, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+container.appendChild(renderer.domElement);
+
+function resize() {
+  const w = container.clientWidth, h = container.clientHeight;
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h); renderer.setPixelRatio(window.devicePixelRatio);
+}
+window.addEventListener('resize', resize);
+
+// 简易轨道控制: 左键旋转, 右键平移, 滚轮缩放
+let drag = null;
+renderer.domElement.addEventListener('mousedown', (e) => { drag = { x: e.clientX, y: e.clientY, btn: e.button }; });
+window.addEventListener('mouseup', () => drag = null);
+window.addEventListener('mousemove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.btn === 0) {
+    camTheta -= dx * 0.005;
+    camPhi = Math.min(Math.PI / 2 - 0.05, Math.max(0.1, camPhi - dy * 0.005));
+  } else if (drag.btn === 2) {
+    const s = camDist * 0.0016;
+    const right = new THREE.Vector3(Math.cos(camTheta), 0, -Math.sin(camTheta));
+    const fwd = new THREE.Vector3(-Math.sin(camTheta), 0, -Math.cos(camTheta));
+    camTarget.addScaledVector(right, -dx * s).addScaledVector(fwd, -dy * s);
+  }
+});
+renderer.domElement.addEventListener('wheel', (e) => {
+  camDist = Math.min(100, Math.max(3, camDist * (1 + e.deltaY * 0.001)));
+});
+renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// 地面网格与坐标轴 (NED: three.x=东, three.y=上, three.z=-北)
+scene.add(new THREE.GridHelper(20, 20, 0x30363d, 0x21262d));
+const axes = new THREE.AxesHelper(2); scene.add(axes); // x=红=东, y=绿=上, z=蓝=南
+const homeMark = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.4, 0.4, 0.02, 32),
+  new THREE.MeshBasicMaterial({ color: 0x8b949e, transparent: true, opacity: 0.5 }));
+scene.add(homeMark);
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(5, 10, 3); scene.add(dl);
+
+function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
+
+function makeLabel(text, cssColor) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  g.font = 'bold 40px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = cssColor; g.fillText(text, 128, 32);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  sp.scale.set(2.2, 0.55, 1);
+  return sp;
+}
+
+function createMesh(u) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.ConeGeometry(0.18, 0.5, 4),
+    new THREE.MeshStandardMaterial({ color: u.color }));
+  body.rotation.x = Math.PI; // 尖端朝下
+  group.add(body);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.02, 8, 32),
+    new THREE.MeshBasicMaterial({ color: u.color }));
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+  u.label = makeLabel(u.ns, u.css);
+  u.label.position.set(0, 0.7, 0);
+  group.add(u.label);
+  u.mesh = group;
+  scene.add(group);
+
+  u.trailGeom = new THREE.BufferGeometry();
+  u.trailGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_LEN * 3), 3));
+  u.trail = new THREE.Line(u.trailGeom, new THREE.LineBasicMaterial({ color: u.color, transparent: true, opacity: 0.55 }));
+  u.trail.frustumCulled = false;
+  scene.add(u.trail);
+}
+
+function update3D(u) {
+  const p = ned2three(u.pos.x, u.pos.y, u.pos.z);
+  u.mesh.position.copy(p);
+  u.mesh.rotation.y = -u.pos.heading; // NED 航向 -> three 坐标
+  const last = u.trailPts[u.trailPts.length - 1];
+  if (!last || last.distanceTo(p) > 0.05) {
+    u.trailPts.push(p.clone());
+    if (u.trailPts.length > TRAIL_LEN) u.trailPts.shift();
+    const arr = u.trailGeom.attributes.position.array;
+    u.trailPts.forEach((pt, i) => { arr[i * 3] = pt.x; arr[i * 3 + 1] = pt.y; arr[i * 3 + 2] = pt.z; });
+    u.trailGeom.setDrawRange(0, u.trailPts.length);
+    u.trailGeom.attributes.position.needsUpdate = true;
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  camera.position.set(
+    camTarget.x + camDist * Math.sin(camPhi) * Math.sin(camTheta),
+    camTarget.y + camDist * Math.cos(camPhi),
+    camTarget.z + camDist * Math.sin(camPhi) * Math.cos(camTheta));
+  camera.lookAt(camTarget);
+  renderer.render(scene, camera);
+}
+resize();
+animate();
+</script>
+</body>
+</html>
