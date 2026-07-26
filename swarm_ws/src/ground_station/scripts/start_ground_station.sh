@@ -9,15 +9,18 @@ source /opt/ros/humble/setup.bash
 # rosbridge 需要能找到 px4_msgs 等自定义消息类型
 [ -f "$HOME/0c00_ws/swarm_ws/install/setup.bash" ] && source "$HOME/0c00_ws/swarm_ws/install/setup.bash"
 
-# 已在运行则直接提示
+# 分别检查 rosbridge 与 http 服务，缺哪个起哪个
 if pgrep -f "rosbridge_websocket" > /dev/null; then
-    echo "[ground_station] 已在运行: http://localhost:8080"
-    exit 0
+    echo "[ground_station] rosbridge 已在运行 (ws://localhost:9090)"
+else
+    nohup ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090 \
+        > /tmp/rosbridge.log 2>&1 &
+    echo "[ground_station] rosbridge 已启动 (ws://localhost:9090)"
 fi
 
-nohup ros2 launch rosbridge_server rosbridge_websocket_launch.xml port:=9090 \
-    > /tmp/rosbridge.log 2>&1 &
-echo "[ground_station] rosbridge 已启动 (ws://localhost:9090)"
-
-nohup python3 -m http.server 8080 -d "$WEB_DIR" > /tmp/gs_http.log 2>&1 &
-echo "[ground_station] Web 页面已启动: http://localhost:8080"
+if pgrep -f "http.server 8080" > /dev/null; then
+    echo "[ground_station] Web 页面已在运行: http://localhost:8080"
+else
+    nohup python3 -m http.server 8080 -d "$WEB_DIR" > /tmp/gs_http.log 2>&1 &
+    echo "[ground_station] Web 页面已启动: http://localhost:8080"
+fi
