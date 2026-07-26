@@ -376,12 +376,30 @@ function createMesh(u) {
   frame.add(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.08), mat));
   // 四个电机
   const motorGeom = new THREE.CylinderGeometry(0.06, 0.06, 0.08, 12);
-  for (const [mx, my] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+  const propGeom = new THREE.BoxGeometry(0.34, 0.02, 0.008);
+  const discGeom = new THREE.CircleGeometry(0.18, 24);
+  u.props = [];
+  u.discs = [];
+  u.propDirs = [1, -1, -1, 1]; // 相邻桨对转
+  [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([mx, my], mi) => {
     const motor = new THREE.Mesh(motorGeom, mat);
     motor.rotation.x = Math.PI / 2; // 转轴沿 local z
     motor.position.set(mx * 0.318, my * 0.318, 0);
     frame.add(motor);
-  }
+    // 桨叶（绕 local z 旋转）
+    const prop = new THREE.Mesh(propGeom, new THREE.MeshStandardMaterial({ color: 0xdddddd }));
+    prop.position.set(mx * 0.318, my * 0.318, -0.06);
+    frame.add(prop);
+    u.props.push(prop);
+    // 旋转时的半透明桨盘（转速越高越明显）
+    const disc = new THREE.Mesh(discGeom, new THREE.MeshBasicMaterial({
+      color: u.color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false,
+    }));
+    disc.position.set(mx * 0.318, my * 0.318, -0.06);
+    frame.add(disc);
+    u.discs.push(disc);
+  });
+  u.spin = 0; // 0=停转 1=全速
   // 机头方向指示（白色圆锥，锥尖朝 local +X）
   const nose = new THREE.Mesh(
     new THREE.ConeGeometry(0.08, 0.25, 12),
@@ -452,6 +470,14 @@ function animate() {
   }
   fenceScan.rotation.y = t * 0.4;
   fenceScan.material.color.setHex(breach ? 0xff5566 : 0x66ffff);
+  // 桨叶：解锁加速旋转，上锁减速停下；桨盘透明度随转速
+  for (const u of Object.values(uavs)) {
+    if (!u.props) continue;
+    const armed = u.status && u.status.arming_state === 2;
+    u.spin = Math.max(0, Math.min(1, (u.spin || 0) + (armed ? 0.03 : -0.02)));
+    u.props.forEach((p, i) => { p.rotation.z += u.spin * 0.9 * u.propDirs[i]; });
+    for (const d of u.discs) d.material.opacity = u.spin * 0.22;
+  }
   camera.position.set(
     camTarget.x + camDist * Math.sin(camPhi) * Math.sin(camTheta),
     camTarget.y + camDist * Math.cos(camPhi),
