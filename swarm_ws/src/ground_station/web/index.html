@@ -146,23 +146,12 @@ function setupRos() {
     });
     sub(ns, 'vehicle_local_position', 'px4_msgs/msg/VehicleLocalPosition', (m) => {
       const u = getUav(ns, i);
-      // 共享坐标原点固定为 uav_1 的 EKF 原点（= 它的起始位置，不随飞行改变，与页面何时打开无关）
-      if (!geoRef && ns === 'uav_1' && m.xy_global && m.ref_lat) {
-        geoRef = { lat: m.ref_lat, lon: m.ref_lon, alt: m.ref_alt };
-      }
       u.pos = m; u.lastSeen = Date.now(); updateCard(u); update3D(u);
     });
     sub(ns, 'vehicle_attitude', 'px4_msgs/msg/VehicleAttitude', (m) => {
       const u = getUav(ns, i);
       u.att = m; u.lastSeen = Date.now();
       if (u.pos) update3D(u);
-    });
-    sub(ns, 'vehicle_global_position', 'px4_msgs/msg/VehicleGlobalPosition', (m) => {
-      const u = getUav(ns, i);
-      // 每架在地面（未解锁）时持续记录自己的地面海拔作为高度零点
-      if (!u.status || u.status.arming_state !== 2) u.groundAlt = m.alt;
-      u.gpos = m; u.lastSeen = Date.now();
-      if (u.pos) { updateCard(u); update3D(u); }
     });
   }
   // 记录状态订阅
@@ -237,13 +226,12 @@ function sendCmd(u, action) {
   if (!def) return;
   // PX4 的起飞命令只负责切到 AUTO_TAKEOFF 模式，未解锁时不会执行；
   // 因此起飞 = 先解锁，1 秒后再发起飞（已解锁时 arm 是无害的重复命令）。
-  // 目标高度: param7 是 AMSL，用各机自己的地面零点（groundAlt，已按实际测量校准）+ 用户填写的高度
+  // 目标高度: param7 是 AMSL，用各机自己的 ref_alt（EKF 原点海拔）+ 用户填写的高度
   if (action === 'takeoff') {
     const h = parseFloat(document.getElementById('takeoff-alt').value) || 1.5;
-    const base = u.groundAlt ?? (u.pos && Number.isFinite(u.pos.ref_alt) ? u.pos.ref_alt : null);
-    if (base === null) { alert(`${u.ns} 位置数据未就绪，无法起飞`); return; }
+    if (!u.pos || !Number.isFinite(u.pos.ref_alt)) { alert(`${u.ns} 位置数据未就绪，无法起飞`); return; }
     publishCmd(u, MAV_CMDS.arm);
-    setTimeout(() => publishCmd(u, { ...def, param7: base + h }), 1000);
+    setTimeout(() => publishCmd(u, { ...def, param7: u.pos.ref_alt + h }), 1000);
     return;
   }
   publishCmd(u, def);
@@ -320,11 +308,7 @@ function updateCard(u) {
     fill.style.background = pct > 50 ? '#3fb950' : pct > 25 ? '#d29922' : '#f85149';
   }
   if (u.pos) {
-    const s = sharedNed(u);
-    const hgt = relHeight(u);
-    f('pos').textContent = s
-      ? `${s.n.toFixed(1)} / ${s.e.toFixed(1)} / ${hgt.toFixed(1)} m`
-      : `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${hgt.toFixed(1)} m`;
+    f('pos').textContent = `${u.pos.x.toFixed(1)} / ${u.pos.y.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
     const h = Math.hypot(u.pos.vx, u.pos.vy);
     f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
   }
@@ -464,25 +448,6 @@ scene.add(fenceTop);
 
 function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
 
-// vehicle_local_position 的 x/y 是相对各机自己的 EKF 原点（各机出生点），
-// 集群地图必须用 vehicle_global_position 换算到共享平面坐标（公共原点 = uav_1 的 EKF 原点，即其起始位置）
-let geoRef = null;
-const EARTH_R = 6378137;
-// 各机高度零点（groundAlt 存在各 uav 对象上）
-function relHeight(u) {
-  return (u.gpos && u.groundAlt != null) ? u.gpos.alt - u.groundAlt : (u.pos ? -u.pos.z : 0);
-}
-function sharedNed(u) {
-  if (!u.gpos || !geoRef) return null;
-  const dLat = (u.gpos.lat - geoRef.lat) * Math.PI / 180;
-  const dLon = (u.gpos.lon - geoRef.lon) * Math.PI / 180;
-  return {
-    n: dLat * EARTH_R,
-    e: dLon * EARTH_R * Math.cos(geoRef.lat * Math.PI / 180),
-    d: -(u.gpos.alt - geoRef.alt),
-  };
-}
-
 function makeLabel(text, cssColor) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 64;
   const g = c.getContext('2d');
@@ -556,11 +521,8 @@ function createMesh(u) {
 const _m4 = new THREE.Matrix4();
 
 function update3D(u) {
-  // 水平位置用共享经纬度（原点 = uav_1 的 EKF 原点）；
-  // 高度 = 各机海拔 - 自己的地面零点（仿真 EKF 各实例有散布，相对自己起飞点才一致）
-  const s = sharedNed(u);
-  const hgt = relHeight(u);
-  const p = s ? ned2three(s.n, s.e, -hgt) : ned2three(u.pos.x, u.pos.y, -hgt);
+  // 位置与高度直接用飞控上报的本地坐标（vehicle_local_position，NED）
+  const p = ned2three(u.pos.x, u.pos.y, u.pos.z);
   u.mesh.position.copy(p);
   u.label.position.set(p.x, p.y + 0.7, p.z);
   u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;
