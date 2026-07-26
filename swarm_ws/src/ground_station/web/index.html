@@ -32,6 +32,13 @@
   .bat-bar { height: 8px; border-radius: 4px; background: #30363d; overflow: hidden; margin-top: 4px; }
   .bat-fill { height: 100%; border-radius: 4px; transition: width 0.4s; }
   #empty { color: #8b949e; font-size: 13px; text-align: center; margin-top: 30px; }
+  #global-ctl { margin-left: auto; display: flex; gap: 8px; }
+  .gbtn, .cbtn { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 4px 12px; font-size: 12px; cursor: pointer; transition: background 0.15s; }
+  .gbtn:hover, .cbtn:hover { background: #144a75; }
+  .gbtn.danger, .cbtn.danger { background: #3a1a1a; color: #ff8a80; border-color: #6e2b2b; }
+  .gbtn.danger:hover, .cbtn.danger:hover { background: #5c2424; }
+  .ctl-row { display: flex; gap: 6px; margin-top: 8px; }
+  .ctl-row .cbtn { flex: 1; padding: 4px 0; }
 </style>
 </head>
 <body>
@@ -39,10 +46,16 @@
   <h1>SwarmCore 地面站</h1>
   <div class="dot" id="conn-dot"></div>
   <span id="conn-text">连接 rosbridge...</span>
+  <div id="global-ctl">
+    <button class="gbtn" data-cmd="takeoff">全部起飞</button>
+    <button class="gbtn" data-cmd="rtl">全部返航</button>
+    <button class="gbtn" data-cmd="land">全部降落</button>
+    <button class="gbtn danger" data-cmd="disarm">全部上锁</button>
+  </div>
 </div>
 <div id="main">
   <div id="sidebar"><div id="empty">等待无人机数据…<br>请先启动仿真 (start_swarm_sim.sh)</div></div>
-  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向</div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m</div></div>
 </div>
 
 <script>
@@ -57,6 +70,8 @@ const NAV_STATES = {
   15: 'STABILIZED', 17: 'AUTO_TAKEOFF', 18: 'AUTO_LAND', 19: 'AUTO_FOLLOW_TARGET',
 };
 const TRAIL_LEN = 600;
+const FENCE_R = 10;   // 地理围栏半径 (m)，以共享原点为圆心
+const FENCE_H = 6;    // 围栏可视化高度 (m)
 
 // ============================== 状态 ==============================
 const uavs = {}; // ns -> {status, battery, pos, lastSeen, card, mesh, label, trail...}
@@ -118,6 +133,7 @@ const sidebar = document.getElementById('sidebar');
 function createCard(u) {
   const el = document.createElement('div');
   el.className = 'card';
+  el.dataset.ns = u.ns;
   el.innerHTML = `
     <div class="card-head">
       <div class="card-title"><span class="color-chip" style="background:${u.css}"></span>${u.ns}</div>
@@ -130,10 +146,71 @@ function createCard(u) {
       <span class="k">位置 N/E/Alt</span><span class="v" data-f="pos">-</span>
       <span class="k">速度 水平/垂直</span><span class="v" data-f="vel">-</span>
     </div>
-    <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>`;
+    <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>
+    <div class="ctl-row">
+      <button class="cbtn" data-a="arm">解锁</button>
+      <button class="cbtn" data-a="takeoff">起飞</button>
+      <button class="cbtn" data-a="rtl">返航</button>
+      <button class="cbtn" data-a="land">降落</button>
+      <button class="cbtn danger" data-a="disarm">上锁</button>
+    </div>`;
   sidebar.appendChild(el);
   u.card = el;
 }
+
+// ============================== 控制指令 ==============================
+// MAVLink 命令: 400=ARM_DISARM, 22=NAV_TAKEOFF, 20=NAV_RTL, 21=NAV_LAND
+// 链路已验证: rosbridge 默认 QoS (reliable) 可匹配 PX4 fmu/in 的 reliable 订阅
+const MAV_CMDS = {
+  arm:     { command: 400, param1: 1 },
+  disarm:  { command: 400, param1: 0 },
+  takeoff: { command: 22 },
+  rtl:     { command: 20 },
+  land:    { command: 21 },
+};
+const cmdTopics = {};
+
+function sendCmd(u, action) {
+  const def = MAV_CMDS[action];
+  if (!def) return;
+  const name = `/${u.ns}/fmu/in/vehicle_command`;
+  const topic = cmdTopics[name] || (cmdTopics[name] = (() => {
+    const t = new ROSLIB.Topic({ ros, name, messageType: 'px4_msgs/msg/VehicleCommand' });
+    t.advertise();
+    return t;
+  })());
+  topic.publish(new ROSLIB.Message({
+    timestamp: 0,
+    param1: def.param1 ?? 0, param2: 0, param3: 0, param4: 0,
+    param5: 0, param6: 0, param7: 0,
+    command: def.command,
+    target_system: u.idx,          // uav_i 的 MAV_SYS_ID = i（实例号 i-1 + 1）
+    target_component: 1,
+    source_system: 255, source_component: 0,
+    confirmation: 0, from_external: true,
+  }));
+}
+
+// 卡片按钮（事件委托）
+sidebar.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-a]');
+  if (!btn) return;
+  const u = uavs[btn.closest('.card')?.dataset.ns];
+  if (!u) return;
+  const a = btn.dataset.a;
+  if (a === 'disarm' && !confirm(`确认对 ${u.ns} 上锁？\n飞行中上锁电机会直接停转！`)) return;
+  sendCmd(u, a);
+});
+
+// 顶栏全局按钮
+document.querySelectorAll('#global-ctl .gbtn').forEach((b) => {
+  b.addEventListener('click', () => {
+    const online = Object.values(uavs).filter((u) => Date.now() - u.lastSeen < 3000);
+    if (!online.length) { alert('当前没有在线飞机'); return; }
+    if (!confirm(`确认对 ${online.length} 架在线飞机执行【${b.textContent}】？`)) return;
+    online.forEach((u) => sendCmd(u, b.dataset.cmd));
+  });
+});
 
 function updateCard(u) {
   const f = (k) => u.card.querySelector(`[data-f="${k}"]`);
@@ -223,6 +300,31 @@ scene.add(homeMark);
 scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(5, 10, 3); scene.add(dl);
 
+// 地理围栏（全息风）：半透明圆柱墙 + 地面实线环 + 旋转虚线扫描环 + 顶环
+const fenceMat = new THREE.MeshBasicMaterial({
+  color: 0x00e5ff, transparent: true, opacity: 0.06,
+  side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const fenceWall = new THREE.Mesh(new THREE.CylinderGeometry(FENCE_R, FENCE_R, FENCE_H, 96, 1, true), fenceMat);
+fenceWall.position.y = FENCE_H / 2;
+scene.add(fenceWall);
+const fenceRingPts = [];
+for (let i = 0; i <= 128; i++) {
+  const a = (i / 128) * Math.PI * 2;
+  fenceRingPts.push(new THREE.Vector3(Math.cos(a) * FENCE_R, 0, Math.sin(a) * FENCE_R));
+}
+const fenceRingGeo = new THREE.BufferGeometry().setFromPoints(fenceRingPts);
+const fenceGround = new THREE.Line(fenceRingGeo, new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.55 }));
+fenceGround.position.y = 0.02;
+scene.add(fenceGround);
+const fenceScan = new THREE.Line(fenceRingGeo.clone(), new THREE.LineDashedMaterial({ color: 0x66ffff, dashSize: 0.8, gapSize: 0.5, transparent: true, opacity: 0.9 }));
+fenceScan.computeLineDistances();
+fenceScan.position.y = 0.06;
+scene.add(fenceScan);
+const fenceTop = new THREE.Line(fenceRingGeo.clone(), new THREE.LineBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.25 }));
+fenceTop.position.y = FENCE_H;
+scene.add(fenceTop);
+
 function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
 
 // vehicle_local_position 的 x/y 是相对各机自己的 EKF 原点（各机出生点），
@@ -299,6 +401,7 @@ function update3D(u) {
   const p = s ? ned2three(s.n, s.e, s.d) : ned2three(u.pos.x, u.pos.y, u.pos.z);
   u.mesh.position.copy(p);
   u.label.position.set(p.x, p.y + 0.7, p.z);
+  u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;
   if (u.att && u.att.q) {
     const [w, x, y, z] = u.att.q;
     const r00 = 1 - 2 * (y * y + z * z), r01 = 2 * (x * y - z * w),     r02 = 2 * (x * z + y * w);
@@ -326,6 +429,18 @@ function update3D(u) {
 
 function animate() {
   requestAnimationFrame(animate);
+  // 围栏动效：呼吸脉冲 + 虚线环旋转扫描；有飞机越界时整体变红快闪
+  const t = performance.now() * 0.001;
+  const breach = Object.values(uavs).some((u) => u.outFence);
+  if (breach) {
+    fenceMat.color.setHex(0xff3355);
+    fenceMat.opacity = 0.10 + 0.08 * Math.abs(Math.sin(t * 8));
+  } else {
+    fenceMat.color.setHex(0x00e5ff);
+    fenceMat.opacity = 0.05 + 0.03 * Math.sin(t * 2);
+  }
+  fenceScan.rotation.y = t * 0.4;
+  fenceScan.material.color.setHex(breach ? 0xff5566 : 0x66ffff);
   camera.position.set(
     camTarget.x + camDist * Math.sin(camPhi) * Math.sin(camTheta),
     camTarget.y + camDist * Math.cos(camPhi),
