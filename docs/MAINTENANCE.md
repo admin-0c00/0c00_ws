@@ -99,3 +99,4 @@
 
 - 数据页 bag 卡片新增"查看数据"：选话题后后端 _series_worker 提取全部数值字段（降采样 ≤2000 点）发 /recorder/series，前端用内嵌 uPlot（离线库 50KB）在 3D 视图左下角画时序曲线，字段可勾选组合。不依赖 PlotJuggler/CDN。
 - bag_brief 增加话题清单（metadata.yaml 解析），卡片上直接选话题。
+- **曲线加载提速**：series 原实现全库扫描+全消息反序列化（大 bag 极慢），改为 metadata 预算 stride + StorageFilter 存储层过滤，只转换所需帧；2018 条话题实测 0.2s。

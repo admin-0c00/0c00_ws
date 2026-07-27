@@ -154,12 +154,27 @@ class RecorderNode(Node):
 
     def _series_worker(self, name, topic):
         try:
-            from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions
+            import yaml
+            from rosbag2_py import (SequentialReader, StorageFilter,
+                                    StorageOptions, ConverterOptions)
             from rclpy.serialization import deserialize_message
             from rosidl_runtime_py.convert import message_to_ordereddict
             from rosidl_runtime_py.utilities import get_message
 
             path = os.path.join(BAG_BASE, name)
+            # 预算采样间隔：metadata.yaml 里有各话题消息数，只转换需要的帧
+            count = 0
+            try:
+                with open(os.path.join(path, "metadata.yaml"), encoding="utf-8") as f:
+                    rd = yaml.safe_load(f)["rosbag2_bagfile_information"]
+                for t in rd.get("topics_with_message_count", []):
+                    if t["topic_metadata"]["name"] == topic:
+                        count = t["message_count"]
+                        break
+            except Exception:
+                pass
+            stride = max(1, count // self.MAX_SERIES_POINTS + 1)
+
             reader = SequentialReader()
             reader.open(StorageOptions(uri=path, storage_id="sqlite3"),
                         ConverterOptions("", ""))
@@ -169,28 +184,29 @@ class RecorderNode(Node):
                     {"name": name, "topic": topic, "ok": False, "msg": "bag 中无此话题"})))
                 return
             msg_cls = get_message(types[topic])
-            # 先全量收集（bag 通常不大），再均匀降采样
+            # 存储层过滤：只读目标话题（不全量扫描整个 bag，大 bag 提速两个数量级）
+            reader.set_filter(StorageFilter(topics=[topic]))
             ts, fields = [], {}
+            i = 0
             while reader.has_next():
-                tp, data, t = reader.read_next()
-                if tp != topic:
-                    continue
-                d = message_to_ordereddict(deserialize_message(data, msg_cls))
-                ts.append(t)
-                for k, v in d.items():
-                    if isinstance(v, bool) or not isinstance(v, (int, float)):
-                        continue
-                    fields.setdefault(k, []).append(float(v))
+                _tp, data, t = reader.read_next()
+                if i % stride == 0:
+                    d = message_to_ordereddict(deserialize_message(data, msg_cls))
+                    ts.append(t)
+                    for k, v in d.items():
+                        if isinstance(v, bool) or not isinstance(v, (int, float)):
+                            continue
+                        fields.setdefault(k, []).append(float(v))
+                i += 1
             if not ts:
                 self.series_pub.publish(String(data=json.dumps(
                     {"name": name, "topic": topic, "ok": False, "msg": "该话题没有数据"})))
                 return
-            stride = max(1, len(ts) // self.MAX_SERIES_POINTS + 1)
-            out = {"name": name, "topic": topic, "ok": True, "rows": len(ts),
-                   "t": [t / 1e9 for t in ts[::stride]],
-                   "series": {k: v[::stride] for k, v in fields.items()}}
+            out = {"name": name, "topic": topic, "ok": True, "rows": i,
+                   "t": [t / 1e9 for t in ts],
+                   "series": fields}
             self.series_pub.publish(String(data=json.dumps(out)))
-            self.get_logger().info(f"曲线数据: {name} {topic} ({len(ts)} 点, {len(fields)} 字段)")
+            self.get_logger().info(f"曲线数据: {name} {topic} ({i} 点->{len(ts)} 帧, {len(fields)} 字段)")
         except Exception as e:
             self.get_logger().error(f"曲线读取失败: {e}")
             self.series_pub.publish(String(data=json.dumps(
