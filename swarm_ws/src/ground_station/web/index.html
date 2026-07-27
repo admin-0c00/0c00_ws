@@ -68,12 +68,13 @@
   .bag-ops a.dl { color: #3fb950; font-size: 12px; align-self: center; text-decoration: none; border: 1px solid #2ea043; border-radius: 6px; padding: 3px 8px; }
   .bag-playing { color: #f85149; font-size: 11px; }
   .bag-topic-sel { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 2px 4px; font-size: 11px; max-width: 150px; }
-  #chart-panel { position: absolute; left: 12px; bottom: 34px; width: 560px; max-width: 70%; background: rgba(22, 27, 34, 0.96); border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; z-index: 50; }
-  #chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-  #chart-head h3 { font-size: 12px; color: #c9d1d9; font-family: "JetBrains Mono", Consolas, monospace; word-break: break-all; }
-  #chart-close { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 14px; padding: 0 4px; }
-  #chart-fields { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 11px; max-height: 66px; overflow-y: auto; margin-bottom: 4px; }
+  #chart-panel { position: absolute; left: 1.5%; right: 1.5%; top: 8px; bottom: 40px; background: rgba(13, 17, 23, 0.97); border: 1px solid #30363d; border-radius: 8px; padding: 10px 14px; z-index: 50; display: flex; flex-direction: column; }
+  #chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  #chart-head h3 { font-size: 13px; color: #c9d1d9; font-family: "JetBrains Mono", Consolas, monospace; word-break: break-all; }
+  #chart-close { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 16px; padding: 0 4px; }
+  #chart-fields { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 11px; max-height: 66px; overflow-y: auto; margin-bottom: 6px; }
   #chart-fields label { color: #8b949e; display: flex; gap: 3px; align-items: center; cursor: pointer; }
+  #chart-plot { flex: 1; min-height: 0; }
   .rec-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
   .rec-card h3 { font-size: 13px; margin-bottom: 6px; }
   .rec-ns { font-size: 12px; font-weight: 600; margin-top: 6px; }
@@ -621,7 +622,7 @@ let chartData = null, chartObj = null, chartTimer = null, chartReq = null;
 function viewSeries(bagName, topic, attempt) {
   attempt = attempt || 1;
   chartReq = { bagName, topic, attempt };
-  document.getElementById('chart-panel').style.display = 'block';
+  document.getElementById('chart-panel').style.display = 'flex';   // 面板是 flex 布局
   document.getElementById('chart-title').textContent =
     `${bagName} · ${topic}（加载中…${attempt > 1 ? ' 重试' + (attempt - 1) : ''}）`;
   document.getElementById('chart-fields').innerHTML = '';
@@ -695,6 +696,10 @@ function renderSeries(d) {
 }
 
 document.getElementById('chart-fields').addEventListener('change', drawChart);
+// 面板铺满视图区后，窗口尺寸变化时图表跟着重绘
+window.addEventListener('resize', () => {
+  if (chartData && document.getElementById('chart-panel').style.display !== 'none') drawChart();
+});
 
 const CHART_COLS = ['#58d6ff', '#3fb950', '#f85149', '#d29922', '#bc8cff', '#39c5cf', '#ff7b72', '#7ee787'];
 function drawChart() {
@@ -705,7 +710,7 @@ function drawChart() {
   if (chartObj) { chartObj.destroy(); chartObj = null; }
   if (!checked.length) return;
   chartObj = new uPlot({
-    width: el.clientWidth || 530, height: 240,
+    width: el.clientWidth || 900, height: el.clientHeight || 420,
     scales: { x: { time: false } },
     series: [{ label: 't(s)' }].concat(
       checked.map((f, i) => ({ label: f, stroke: CHART_COLS[i % CHART_COLS.length], width: 1 }))),
