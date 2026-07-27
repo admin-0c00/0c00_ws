@@ -44,3 +44,10 @@
 - **rosbridge 脆弱性**：高负载会饿死（100% CPU）甚至卡死不响应握手；保持页面限流、关闭 QGC 等无关重负载进程。
 - **页面异常先 Ctrl+F5**：浏览器缓存是本项目的头号"假故障"来源。
 - **真机待办**：UWB/光流定位接入 EKF、机载 bringup、swarm_fusion/swarm_task 填实、safety_guard 策略、HITL 过渡。详见教程手册"从仿真到真机"一节。
+## 2026-07-27 swarm_api 集群控制框架
+
+- **新增 `swarm_ws/src/swarm_api` 包**：集群控制框架，把 QoS、ENU↔NED 转换、Offboard 20Hz 设定点流、命令重发全部封装。三层结构：`Drone`（单机原语 takeoff/goto/set_velocity/hover/land）→ `Swarm`（每机一线程并行、自动发现命名空间、异常隔离、编队 line/column/triangle/grid）→ `Strategy`（策略插件基类，对齐产品定义书 4.6）。
+- **两个实测中抓到的问题**：land 时设定点流未停导致 PX4 拒绝 NAV_LAND 悬停不落（已修，降落前先断流）；goto 增加 Offboard 丢失 2s 快速报错（仿真 failsafe 场景不再傻等 60s）。
+- **示例**：`demo_single_drone.py`（单机，80 行）/ `demo_swarm_square.py`（三机，67 行），3 机仿真位置控制与速度控制均实测通过。
+- **wiki 教程** `swarmcore-swarm-api-tutorial.md`：API 参考、常见用法、Strategy 写法、安全机制、真机迁移、FAQ（官网上传由负责人处理）。
+- README：新增框架章节；修正仿真第 2 个参数说明写反（实际 0=GUI、1=无头）。

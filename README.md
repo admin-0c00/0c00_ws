@@ -35,7 +35,7 @@ source /opt/ros/humble/setup.bash
 source ~/0c00_ws/swarm_ws/install/setup.bash   # 按实际 clone 路径调整
 ```
 
-启动 3 机仿真（第 2 个参数 0 = 无头模式，1 = 带 Gazebo 界面）：
+启动 3 机仿真（第 2 个参数 0 = 带 Gazebo 界面，1 = 无头模式）：
 
 ```bash
 ~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 3 0
@@ -54,6 +54,25 @@ ros2 run bringup swarm_takeoff.py     # 或按 bringup 包内说明
 python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square.py      # NED 坐标版
 python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square_enu.py  # ENU 坐标版（ROS 习惯，推荐新手）
 # 可调: --ros-args -p takeoff_alt:=2.0 -p side:=3.0
+```
+
+集群控制框架 swarm_api（多机并行控制，仿真/真机同构）：
+
+```python
+from swarm_api import Swarm
+
+swarm = Swarm(num_drones=3)     # 自动发现在线飞机，真机零改动接入
+swarm.takeoff(1.5)              # 全群同时起飞
+swarm.goto_all([(0,2,1.5), (2,2,1.5), (4,2,1.5)])  # 各机飞各自目标，同时执行
+swarm.goto_formation("triangle", spacing=2.0, z=1.5)  # 编队：line/column/triangle/grid
+swarm.land()
+```
+
+```bash
+# 框架版示例（先启动对应机数的仿真，如 start_swarm_sim.sh 3 1）：
+python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_single_drone.py  # 单机（Drone 类）
+python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_swarm_square.py  # 三机（Swarm 类）
+# 完整教程见 wiki《SwarmCore 集群控制框架（swarm_api）使用说明与教程》
 ```
 
 Web 地面站（状态卡片 + 3D 地图）：
@@ -78,7 +97,8 @@ Web 地面站（状态卡片 + 3D 地图）：
 ├── PX4-Autopilot/            # PX4 v1.15.4（子模块已拍平，tag v1.15.4 保留供版本检测）
 ├── Micro-XRCE-DDS-Agent/     # DDS 桥源码
 └── swarm_ws/src/             # ROS 2 功能包
-    ├── bringup/              # 仿真启停脚本、起飞脚本
+    ├── bringup/              # 仿真启停脚本、起飞脚本、demo 示例
+    ├── swarm_api/            # 集群控制框架（Drone/Swarm/Strategy，Python）
     ├── ground_station/       # Web 地面站（rosbridge + Three.js）
     ├── swarm_msgs/           # 自定义消息（TargetMap / TaskAssignment）
     ├── px4_msgs/ px4_ros_com/# PX4-ROS2 桥接
