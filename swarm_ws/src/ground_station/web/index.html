@@ -675,8 +675,22 @@ function renderSeries(d) {
   chartData.rel = d.t.map((t) => +(t - t0).toFixed(3));
   document.getElementById('chart-title').textContent = `${d.name} · ${d.topic}（${d.rows} 点）`;
   const names = Object.keys(d.series);
-  document.getElementById('chart-fields').innerHTML = names.map((f, i) =>
-    `<label><input type="checkbox" data-f="${f}" ${i < 3 ? 'checked' : ''}> ${f}</label>`).join('');
+  // 默认勾选"有变化"的字段（按方差排序取前 4）：静止 bag 的前几个字段往往全是定值，
+  // 用户打开就看到"几条直线"会误以为坏了；全平的数据则如实提示
+  const variance = (arr) => {
+    const v = arr.filter((x) => x !== null);
+    if (!v.length) return 0;
+    const mean = v.reduce((a, b) => a + b, 0) / v.length;
+    return v.reduce((a, b) => a + (b - mean) * (b - mean), 0) / v.length;
+  };
+  const ranked = names.map((f) => [f, variance(d.series[f])]).sort((a, b) => b[1] - a[1]);
+  const defaults = new Set(ranked.slice(0, 4).filter(([, s]) => s > 0).map(([f]) => f));
+  if (!defaults.size) {
+    document.getElementById('chart-title').textContent =
+      `${d.name} · ${d.topic}（${d.rows} 点）—— 所有字段都是定值（录制时飞机静止）`;
+  }
+  document.getElementById('chart-fields').innerHTML = names.map((f) =>
+    `<label><input type="checkbox" data-f="${f}" ${defaults.has(f) ? 'checked' : ''}> ${f}</label>`).join('');
   drawChart();
 }
 
