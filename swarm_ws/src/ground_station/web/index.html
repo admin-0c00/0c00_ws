@@ -655,6 +655,20 @@ function seriesHandler(m) {
     showToast(`曲线读取失败: ${d.msg}`, false);
     return;
   }
+  // 大数据走 HTTP 下载（rosbridge 只发就绪通知，避免 DDS best-effort 丢大消息）
+  if (d.url) {
+    document.getElementById('chart-title').textContent = `已就绪 ${d.rows} 点，下载中…`;
+    fetch(d.url).then((r) => r.json()).then((full) => {
+      renderSeries({ name: d.name, topic: d.topic, rows: d.rows, t: full.t, series: full.series });
+    }).catch((e) => {
+      document.getElementById('chart-title').textContent = `下载失败: ${e}`;
+    });
+    return;
+  }
+  renderSeries(d);   // 兼容直接带数据的旧格式
+}
+
+function renderSeries(d) {
   document.getElementById('chart-title').textContent = `已收到 ${d.rows} 点，绘图中…`;   // 调试埋点：区分"没收到"和"绘图崩"
   chartData = d;
   const t0 = d.t[0] || 0;

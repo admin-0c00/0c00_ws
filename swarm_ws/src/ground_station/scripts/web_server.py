@@ -61,7 +61,9 @@ async def handler(connection):
         return
     try:
         # 本机上游无需 keepalive；rosbridge 高负载时回 ping 慢，默认 20s 超时会误杀连接
-        async with connect(ROSBRIDGE, ping_interval=None) as upstream:
+        # max_size 必须放大：曲线结果 JSON 可达数 MB，websockets 默认 1MiB 上限会把
+        # 大帧直接掐断连接（用户"曲线打不开、连接闪断"的根因）
+        async with connect(ROSBRIDGE, ping_interval=None, max_size=32 * 1024 * 1024) as upstream:
             async def down():  # 浏览器 -> rosbridge
                 async for msg in connection:
                     await upstream.send(msg)
@@ -85,7 +87,8 @@ async def main():
     # 浏览器侧 keepalive 放宽: 页面高负载时回 pong 可能较慢，超时收紧会误杀
     async with serve(handler, "0.0.0.0", LISTEN_PORT,
                      process_request=process_request,
-                     ping_interval=30, ping_timeout=120):
+                     ping_interval=30, ping_timeout=120,
+                     max_size=32 * 1024 * 1024):   # 同上游，放行大帧
         print(f"[web_server] http://0.0.0.0:{LISTEN_PORT} "
               f"(静态: {WEB_DIR}, /ws -> {ROSBRIDGE})")
         await asyncio.get_running_loop().create_future()  # run forever

@@ -103,3 +103,9 @@
 - **下拉框秒缩修复**：数据页 1Hz 状态刷新会重建卡片 HTML，销毁打开中的 select——改为签名对比，内容（bag 清单/回放/导出状态）变化才重渲染。
 - **加载中超时兜底**：曲线结果 15s 未到显示"请 Ctrl+F5"（旧缓存页面收不到 series 订阅结果时的明确指引）。经 ws 中转实测端到端 0.02s，"很慢"实为旧页面。
 - **曲线结果丢失根治**：rosbridge 按订阅代际投递，用户连接频繁闪断重连（rosbridge 日志可见每秒级重订阅），一次性结果发到死连接上即丢失。改为超时自动重试 2 次（新连接上重发请求必达）；另加全局 JS 错误 toast 与"已收到 N 点，绘图中"阶段埋点，区分"没收到"与"绘图崩"。
+## 2026-07-27 曲线大消息丢失根治（HTTP 下载架构）
+
+- **根因链**：vehicle_status 秒开、vehicle_local_position 必丢——rosbridge 订阅是 best-effort QoS，~600KB 以上大消息在 DDS 层静默丢（UDP 缓冲溢出无重传，可靠订阅会 NACK 重传所以 rclpy 能收到）。现象随时间/负载漂移，极具迷惑性（曾误判为缓存、连接闪断、帧上限）。
+- **修复**：series 结果写 bag 目录 series.json，rosbridge 只发 200 字节"就绪"通知（含 url），前端 fetch 下载——彻底绕开 DDS 大消息问题，任意大小都可靠。
+- 直线问题：剔除 timestamp/timestamp_sample 字段（1e15 量级压扁 Y 轴）。
+- web_server /bags 路由与 32MB max_size 保留（防御性）。

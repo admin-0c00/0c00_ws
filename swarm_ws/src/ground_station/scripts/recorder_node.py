@@ -196,16 +196,23 @@ class RecorderNode(Node):
                     for k, v in d.items():
                         if isinstance(v, bool) or not isinstance(v, (int, float)):
                             continue
+                        if k in ("timestamp", "timestamp_sample"):
+                            continue   # 纳秒时间戳(~1e15)会把 Y 轴撑爆，其他字段全压成直线
                         fields.setdefault(k, []).append(float(v))
                 i += 1
             if not ts:
                 self.series_pub.publish(String(data=json.dumps(
                     {"name": name, "topic": topic, "ok": False, "msg": "该话题没有数据"})))
                 return
-            out = {"name": name, "topic": topic, "ok": True, "rows": i,
-                   "t": [t / 1e9 for t in ts],
-                   "series": fields}
-            self.series_pub.publish(String(data=json.dumps(out)))
+            # 结果写文件走 HTTP 下载，rosbridge 只发"就绪"通知：
+            # 大 JSON 经 DDS best-effort 订阅会静默丢（UDP 缓冲不足无重传，实测 ~600KB 阈值）
+            out = {"rows": i, "t": [t / 1e9 for t in ts], "series": fields}
+            series_path = os.path.join(path, "series.json")
+            with open(series_path, "w", encoding="utf-8") as f:
+                json.dump(out, f)
+            self.series_pub.publish(String(data=json.dumps(
+                {"name": name, "topic": topic, "ok": True, "url": f"/bags/{name}/series.json",
+                 "rows": i, "fields": len(fields)})))
             self.get_logger().info(f"曲线数据: {name} {topic} ({i} 点->{len(ts)} 帧, {len(fields)} 字段)")
         except Exception as e:
             self.get_logger().error(f"曲线读取失败: {e}")
