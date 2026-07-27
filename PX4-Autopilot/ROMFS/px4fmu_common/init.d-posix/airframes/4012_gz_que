@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# @name Gazebo que（零创无穷"雀"，2004 电机 / DT90 桨 / 4S）
+#
+# @type Quadrotor
+#
+
+. ${R}etc/init.d/rc.mc_defaults
+
+PX4_SIMULATOR=${PX4_SIMULATOR:=gz}
+PX4_GZ_WORLD=${PX4_GZ_WORLD:=default}
+PX4_SIM_MODEL=${PX4_SIM_MODEL:=que}
+
+param set-default SIM_GZ_EN 1
+
+param set-default SENS_EN_GPSSIM 1
+param set-default SENS_EN_BAROSIM 0
+param set-default SENS_EN_MAGSIM 1
+
+param set-default CA_AIRFRAME 0
+param set-default CA_ROTOR_COUNT 4
+
+# 旋翼布局（FRD, 米）：FR / RL / FL / RR，臂半径 75.7mm（由 CAD 装配体量取）
+# 注意：EC_MAX 必须等于 SDF 的 maxRotVelocity（4650 rad/s），电机指令单位是 rad/s
+param set-default CA_ROTOR0_PX 0.0552
+param set-default CA_ROTOR0_PY 0.0517
+param set-default CA_ROTOR0_KM  0.01
+
+param set-default CA_ROTOR1_PX -0.0552
+param set-default CA_ROTOR1_PY -0.0518
+param set-default CA_ROTOR1_KM  0.01
+
+param set-default CA_ROTOR2_PX 0.0518
+param set-default CA_ROTOR2_PY -0.0552
+param set-default CA_ROTOR2_KM -0.01
+
+param set-default CA_ROTOR3_PX -0.0518
+param set-default CA_ROTOR3_PY 0.0552
+param set-default CA_ROTOR3_KM -0.01
+
+param set-default SIM_GZ_EC_FUNC1 101
+param set-default SIM_GZ_EC_FUNC2 102
+param set-default SIM_GZ_EC_FUNC3 103
+param set-default SIM_GZ_EC_FUNC4 104
+
+param set-default SIM_GZ_EC_MIN1 150
+param set-default SIM_GZ_EC_MIN2 150
+param set-default SIM_GZ_EC_MIN3 150
+param set-default SIM_GZ_EC_MIN4 150
+
+param set-default SIM_GZ_EC_MAX1 4650
+param set-default SIM_GZ_EC_MAX2 4650
+param set-default SIM_GZ_EC_MAX3 4650
+param set-default SIM_GZ_EC_MAX4 4650
+
+param set-default MPC_THR_HOVER 0.60
+
+# 小机（0.48kg，惯量约为 x500 的 1/16）：默认角速率增益过猛会振荡饱和，
+# 导致姿态吃满油门余量、无法爬升（实测）。增益砍半。
+param set-default MC_ROLLRATE_P 0.08
+param set-default MC_PITCHRATE_P 0.08
+param set-default MC_YAWRATE_P 0.10
+param set-default MC_ROLLRATE_I 0.10
+param set-default MC_PITCHRATE_I 0.10
+param set-default MC_YAWRATE_I 0.05

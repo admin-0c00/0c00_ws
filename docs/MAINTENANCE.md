@@ -125,3 +125,9 @@
 - start_swarm_sim.sh 新增第 3 参数"机型"（默认 gz_x500）：PX4_SIM_MODEL 参数化，启动前预检 airframe 文件与 gz 模型目录，非法机型直接报错并列出可用机型。自有机型接入只需：gz/models/<模型> + ROMFS airframe 文件。
 - 新增 start_sensor_bridge.sh：Gazebo 相机/深度/点云话题桥到 ROS 2（ros_gz_bridge）。实测 gz_x500_depth（OakD-Lite）：/camera 18.5Hz、/depth_camera 23Hz、/depth_camera/points 18.7Hz、camera_info 640x480 正常。
 - 坑记录：① 点云的 Gazebo 类型是 PointCloudPacked 不是 PointCloud，写错桥接静默失败（仅一行 WARN）；② Humble+Garden 的桥接包是 ros-humble-ros-gzgarden-bridge（非默认 ros-gz）；③ 脚本里 set -u 要放在 source setup.bash 之后（AMENT_TRACE_SETUP_FILES 未绑定）。
+## 2026-07-28 自有机型"雀"接入仿真 + 地面站真机模型
+
+- **新机型 gz_que**（2004 电机/DT90 桨/4S/电机倒装桨朝下）：CAD（雀_NX.stp）→ OCP 解析装配 → FLU 网格 + 物理参数 → gz/models/que + airframe 4012_gz_que。`start_swarm_sim.sh 1 1 gz_que` 起飞/前移/返航/降落全流程实测通过。动力为估算值（3000KV@4S → maxRotVelocity 4650，T/W≈2.9），待实测校准。
+- **调试链（都是坑，按踩坑顺序）**：① Gazebo 模型网格必须 FLU（x前y左z上），一开始按 PX4 习惯的 FRD 做 → 模型上下颠倒+左右镜像；② OCP XDE 遍历装配：GetShape_s(组件标签)自带一层定位，嵌套装配双重变换，应取 referred 产品形状再沿装配链组合 loc；③ 机架中心必须按"修正后的"装配体重算（旧解析错了 12mm → 推力点与质量分布错位）；④ 自定义机型必须自带 imu/air_pressure/navsat 传感器块（否则 Preflight: Gyro/Compass missing）；⑤ **最关键**：PX4 SITL gz 的电机指令单位是 rad/s，airframe 的 SIM_GZ_EC_MAX 必须等于 SDF maxRotVelocity（x500 是 1000=1000 所以从来没暴露）——我们 EC_MAX=1000 而 maxRotVelocity=4650，推力只有 4.6%，且 PX4 估计高度 1.5m 而 Gazebo 真值在地面（假飞行），调参方向全被误导；⑥ 小机（0.48kg）默认角速率增益过猛 + CA_ROTOR_KM 要与 SDF momentConstant 对齐，否则姿态互搏吃满油门余量。
+- **地面站真机模型**：web/que_model.json（自烘焙 base64 网格 2.1MB：全机 21k 顶点顶点色 + 双旋向桨独立节点）。three r160 已删非模块 GLTFLoader，故自定义格式 + 30 行解析；createMesh 加载后自动换装，缺失时回退几何体拼装。QUE_SCALE=2（真机 0.23m 太小）。桨转动画沿用解锁转/上锁停。
+- 转换管线脚本存 tools/drone_model/（cadquery/trimesh venv 在 ~/0c00_ws/tools/cadenv）；CAD 源文件未入库。

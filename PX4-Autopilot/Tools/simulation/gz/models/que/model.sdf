@@ -1,0 +1,256 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 零创无穷"雀"四轴：由 雀_NX.stp（CAD 装配体）自动生成
+     几何：电机臂半径 75.7mm，X 布局，对角轴距 151mm
+     动力（估算，待实测校准）：2004 3000KV / 4S / DT90 三叶桨
+       maxRotVelocity 4650 rad/s ≈ 3000KV × 14.8V
+       motorConstant 1.11e-7 → 单电机最大推力 ~2.4N，T/W ≈ 2.0（按 0.48kg）
+     机头方向 = CAD +y（网格已转 FLU：x前 y左 z上，单位 mm；电机倒装（桨朝下）） -->
+<sdf version='1.9'>
+  <model name='que'>
+    <link name='base_link'>
+      <inertial>
+        <pose>0 0 0 0 0 0</pose>
+        <mass>0.48</mass>
+        <inertia>
+          <ixx>1.346e-03</ixx>
+          <iyy>1.735e-03</iyy>
+          <izz>2.373e-03</izz>
+          <ixy>-2.20e-05</ixy>
+          <ixz>3.02e-05</ixz>
+          <iyz>2.81e-06</iyz>
+        </inertia>
+      </inertial>
+      <visual name='body_visual'>
+        <geometry>
+          <mesh>
+            <uri>model://que/meshes/body.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name='body_collision'>
+        <geometry>
+          <mesh>
+            <uri>model://que/meshes/body.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- 传感器三件套（与 x500 同款；PX4 gz 桥按名字订阅，缺了会 Preflight 缺传感器） -->
+      <sensor name="air_pressure_sensor" type="air_pressure">
+        <always_on>1</always_on>
+        <update_rate>50</update_rate>
+        <air_pressure>
+          <pressure>
+            <noise type="gaussian">
+              <mean>0</mean>
+              <stddev>0.01</stddev>
+            </noise>
+          </pressure>
+        </air_pressure>
+      </sensor>
+      <sensor name="imu_sensor" type="imu">
+        <always_on>1</always_on>
+        <update_rate>250</update_rate>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>3.8785e-05</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>3.8785e-05</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>3.8785e-05</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0.006</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0.006</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0.006</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+      <sensor name="navsat_sensor" type="navsat">
+        <always_on>1</always_on>
+        <update_rate>30</update_rate>
+        <navsat>
+          <position_sensing>
+            <vertical>
+              <!-- 垂直位置噪声置零（沿用集群 GPS 高度修复，见 x500_base 同款注释） -->
+              <noise type="gaussian">
+                <mean>0</mean>
+                <stddev>0</stddev>
+              </noise>
+            </vertical>
+          </position_sensing>
+        </navsat>
+      </sensor>
+    </link>
+
+    <!-- 旋翼：位置 = CA_ROTOR 布局（FRD, 米）；桨平面在桨毂平面下 0.02m -->
+    <link name='rotor_0'>
+      <pose>0.0552 -0.0517 -0.02 0 0 0</pose>
+      <inertial>
+        <mass>0.008</mass>
+        <inertia>
+          <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
+        </inertia>
+      </inertial>
+      <visual name='prop_visual'>
+        <geometry>
+          <mesh>
+            <uri>model://que/meshes/prop_ccw.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_0_joint' type='revolute'>
+      <parent>base_link</parent>
+      <child>rotor_0</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit><lower>-1e+16</lower><upper>1e+16</upper></limit>
+      </axis>
+    </joint>
+
+    <link name='rotor_1'>
+      <pose>-0.0552 0.0518 -0.02 0 0 0</pose>
+      <inertial>
+        <mass>0.008</mass>
+        <inertia>
+          <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
+        </inertia>
+      </inertial>
+      <visual name='prop_visual'>
+        <geometry>
+          <mesh>
+            <uri>model://que/meshes/prop_ccw.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_1_joint' type='revolute'>
+      <parent>base_link</parent>
+      <child>rotor_1</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit><lower>-1e+16</lower><upper>1e+16</upper></limit>
+      </axis>
+    </joint>
+
+    <link name='rotor_2'>
+      <pose>0.0518 0.0552 -0.02 0 0 0</pose>
+      <inertial>
+        <mass>0.008</mass>
+        <inertia>
+          <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
+        </inertia>
+      </inertial>
+      <visual name='prop_visual'>
+        <geometry>
+          <mesh>
+            <uri>model://que/meshes/prop_cw.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_2_joint' type='revolute'>
+      <parent>base_link</parent>
+      <child>rotor_2</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit><lower>-1e+16</lower><upper>1e+16</upper></limit>
+      </axis>
+    </joint>
+
+    <link name='rotor_3'>
+      <pose>-0.0518 -0.0552 -0.02 0 0 0</pose>
+      <inertial>
+        <mass>0.008</mass>
+        <inertia>
+          <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
+        </inertia>
+      </inertial>
+      <visual name='prop_visual'>
+        <geometry>
+          <mesh>
+            <uri>model://que/meshes/prop_cw.stl</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='rotor_3_joint' type='revolute'>
+      <parent>base_link</parent>
+      <child>rotor_3</child>
+      <axis>
+        <xyz>0 0 1</xyz>
+        <limit><lower>-1e+16</lower><upper>1e+16</upper></limit>
+      </axis>
+    </joint>
+
+    <!-- 动力插件：rotor_0 FR(ccw) / rotor_1 RL(ccw) / rotor_2 FL(cw) / rotor_3 RR(cw)，与 PX4 quad-x 一致 -->
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <jointName>rotor_0_joint</jointName>
+      <linkName>rotor_0</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>4650.0</maxRotVelocity>
+      <motorConstant>1.65e-07</motorConstant>
+      <momentConstant>0.01</momentConstant>
+      <commandSubTopic>command/motor_speed</commandSubTopic>
+      <motorNumber>0</motorNumber>
+      <rotorDragCoefficient>1e-05</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+      <motorType>velocity</motorType>
+    </plugin>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <jointName>rotor_1_joint</jointName>
+      <linkName>rotor_1</linkName>
+      <turningDirection>ccw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>4650.0</maxRotVelocity>
+      <motorConstant>1.65e-07</motorConstant>
+      <momentConstant>0.01</momentConstant>
+      <commandSubTopic>command/motor_speed</commandSubTopic>
+      <motorNumber>1</motorNumber>
+      <rotorDragCoefficient>1e-05</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+      <motorType>velocity</motorType>
+    </plugin>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <jointName>rotor_2_joint</jointName>
+      <linkName>rotor_2</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>4650.0</maxRotVelocity>
+      <motorConstant>1.65e-07</motorConstant>
+      <momentConstant>0.01</momentConstant>
+      <commandSubTopic>command/motor_speed</commandSubTopic>
+      <motorNumber>2</motorNumber>
+      <rotorDragCoefficient>1e-05</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+      <motorType>velocity</motorType>
+    </plugin>
+    <plugin filename="gz-sim-multicopter-motor-model-system" name="gz::sim::systems::MulticopterMotorModel">
+      <jointName>rotor_3_joint</jointName>
+      <linkName>rotor_3</linkName>
+      <turningDirection>cw</turningDirection>
+      <timeConstantUp>0.0125</timeConstantUp>
+      <timeConstantDown>0.025</timeConstantDown>
+      <maxRotVelocity>4650.0</maxRotVelocity>
+      <motorConstant>1.65e-07</motorConstant>
+      <momentConstant>0.01</momentConstant>
+      <commandSubTopic>command/motor_speed</commandSubTopic>
+      <motorNumber>3</motorNumber>
+      <rotorDragCoefficient>1e-05</rotorDragCoefficient>
+      <rollingMomentCoefficient>1e-06</rollingMomentCoefficient>
+      <rotorVelocitySlowdownSim>10</rotorVelocitySlowdownSim>
+      <motorType>velocity</motorType>
+    </plugin>
+  </model>
+</sdf>

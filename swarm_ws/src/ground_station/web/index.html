@@ -996,6 +996,49 @@ function makeLabel(text, cssColor) {
   return sp;
 }
 
+// ---- 真机模型（雀）：自烘焙 base64 网格（que_model.json），无 GLTFLoader 依赖 ----
+// three r160 已删除非模块 GLTFLoader，自定义格式 + 下面的 30 行解析最省心。
+const QUE_SCALE = 2.0;   // 真机仅 0.23m 宽，3D 图里放大 2 倍便于观察
+let queModel = null;     // {body, ccw, cw, rotor_pos, prop_kind}
+
+function buildQueMesh(u) {
+  while (u.frame.children.length) u.frame.remove(u.frame.children[0]);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true });
+  const body = new THREE.Mesh(queModel.body, mat);
+  body.scale.setScalar(QUE_SCALE);
+  u.frame.add(body);
+  u.props = [];
+  u.discs = [];
+  queModel.rotor_pos.forEach((pos, i) => {
+    const p = new THREE.Mesh(queModel[queModel.prop_kind[i]], mat);
+    p.position.set(pos[0] * QUE_SCALE, pos[1] * QUE_SCALE, pos[2] * QUE_SCALE);
+    p.scale.setScalar(QUE_SCALE);
+    u.frame.add(p);
+    u.props.push(p);
+  });
+  u.propDirs = [1, 1, -1, -1];   // FR/RL ccw, FL/RR cw
+}
+
+fetch('que_model.json').then((r) => r.json()).then((jm) => {
+  const dec = (b64, T) => {
+    const bin = atob(b64);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new T(buf.buffer);
+  };
+  const geom = (g) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(dec(g.pos, Float32Array), 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(dec(g.nrm, Float32Array), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(dec(g.col, Float32Array), 3));
+    geo.setIndex(new THREE.BufferAttribute(dec(g.idx, Uint32Array), 1));
+    return geo;
+  };
+  queModel = { body: geom(jm.body), ccw: geom(jm.prop_ccw), cw: geom(jm.prop_cw),
+               rotor_pos: jm.rotor_pos, prop_kind: jm.prop_kind };
+  Object.values(uavs).forEach((u) => { if (u.frame) buildQueMesh(u); });  // 已上线的飞机直接换装
+}).catch(() => { /* 模型缺失时保持几何体拼装占位，不影响功能 */ });
+
 function createMesh(u) {
   const group = new THREE.Group();      // 外层: 只负责位置
   const frame = new THREE.Group();      // 内层: 负责姿态 (local: x=机头, y=右翼, z=下)
@@ -1045,6 +1088,7 @@ function createMesh(u) {
   scene.add(u.label);
   u.mesh = group;
   scene.add(group);
+  if (queModel) buildQueMesh(u);        // 真机模型已加载则直接用它（否则保留占位，加载后自动换装）
 
   u.trailGeom = new THREE.BufferGeometry();
   u.trailGeom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_LEN * 3), 3));
