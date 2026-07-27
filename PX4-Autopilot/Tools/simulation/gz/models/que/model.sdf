@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- 零创无穷"雀"四轴：由 雀_NX.stp（CAD 装配体）自动生成
      几何：电机臂半径 75.7mm，X 布局，对角轴距 151mm
-     动力（估算，待实测校准）：2004 3000KV / 4S / DT90 三叶桨
-       maxRotVelocity 4650 rad/s ≈ 3000KV × 14.8V
-       motorConstant 1.11e-7 → 单电机最大推力 ~2.4N，T/W ≈ 2.0（按 0.48kg）
+     动力（按 ECOII2004-3000KV@16V 实测台架数据标定，DT90 比台架 5 寸桨小做保守折减）：
+       maxRotVelocity 4650 rad/s ≈ 3000KV × 14.8V（台架 90% 油门 26k RPM 留有余量）
+       motorConstant 2.2e-7 → 单电机最大推力 ~4.8N(485g)，T/W ≈ 3.9（按 0.48kg）
      机头方向 = CAD +y（网格已转 FLU：x前 y左 z上，单位 mm；电机倒装（桨朝下）） -->
 <sdf version='1.9'>
   <model name='que'>
@@ -220,7 +220,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>4650.0</maxRotVelocity>
-      <motorConstant>1.65e-07</motorConstant>
+      <motorConstant>2.2e-07</motorConstant>
       <momentConstant>0.01</momentConstant>
       <commandSubTopic>command/motor_speed</commandSubTopic>
       <motorNumber>0</motorNumber>
@@ -236,7 +236,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>4650.0</maxRotVelocity>
-      <motorConstant>1.65e-07</motorConstant>
+      <motorConstant>2.2e-07</motorConstant>
       <momentConstant>0.01</momentConstant>
       <commandSubTopic>command/motor_speed</commandSubTopic>
       <motorNumber>1</motorNumber>
@@ -252,7 +252,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>4650.0</maxRotVelocity>
-      <motorConstant>1.65e-07</motorConstant>
+      <motorConstant>2.2e-07</motorConstant>
       <momentConstant>0.01</momentConstant>
       <commandSubTopic>command/motor_speed</commandSubTopic>
       <motorNumber>2</motorNumber>
@@ -268,7 +268,7 @@
       <timeConstantUp>0.0125</timeConstantUp>
       <timeConstantDown>0.025</timeConstantDown>
       <maxRotVelocity>4650.0</maxRotVelocity>
-      <motorConstant>1.65e-07</motorConstant>
+      <motorConstant>2.2e-07</motorConstant>
       <momentConstant>0.01</momentConstant>
       <commandSubTopic>command/motor_speed</commandSubTopic>
       <motorNumber>3</motorNumber>

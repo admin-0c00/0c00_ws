@@ -53,7 +53,7 @@ param set-default SIM_GZ_EC_MAX2 4650
 param set-default SIM_GZ_EC_MAX3 4650
 param set-default SIM_GZ_EC_MAX4 4650
 
-param set-default MPC_THR_HOVER 0.60
+param set-default MPC_THR_HOVER 0.50
 
 # 小机（0.48kg，惯量约为 x500 的 1/16）：默认角速率增益过猛会振荡饱和，
 # 导致姿态吃满油门余量、无法爬升（实测）。增益砍半。
