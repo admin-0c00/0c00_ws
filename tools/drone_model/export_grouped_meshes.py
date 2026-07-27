@@ -2,7 +2,8 @@
 """按颜色分组导出雀的 FLU 网格（Gazebo 单 visual 只能单色，分组才能多彩）。
 
 输出 que/meshes/ 下 5 个分组 STL（FLU, mm）:
-  frame.stl      底板+顶板（碳黑）
+  frame.stl      底板（黑）
+  top.stl        顶板（紫罗兰）
   bay.stl        电池仓+卡槽（深灰蓝）
   gear.stl       起落架（黑）
   guard.stl      保护圈（淡紫）
@@ -23,7 +24,8 @@ CENTER_CAD = np.array([-37.48, 40.6, -18.0])
 M = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]], dtype=float)   # CAD -> FLU
 
 GROUPS = {
-    "frame": {"雀_底板_V3", "雀_顶板_V3_nx"},
+    "frame": {"雀_底板_V3"},
+    "top": {"雀_顶板_V3_nx"},
     "bay": {"雀_电池仓_V3", "4S电池卡槽"},
     "gear": {"雀_起落架"},
     "guard": {"3.5寸桨保护圈"},

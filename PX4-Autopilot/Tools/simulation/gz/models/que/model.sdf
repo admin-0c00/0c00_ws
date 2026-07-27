@@ -25,9 +25,13 @@
         <geometry><mesh><uri>model://que/meshes/frame.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
         <material><ambient>0.02 0.02 0.02 1</ambient><diffuse>0.06 0.06 0.06 1</diffuse><specular>0.2 0.2 0.2 1</specular></material>
       </visual>
+      <visual name='top_visual'>
+        <geometry><mesh><uri>model://que/meshes/top.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.21 0.15 0.34 1</ambient><diffuse>0.53 0.37 0.86 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+      </visual>
       <visual name='bay_visual'>
         <geometry><mesh><uri>model://que/meshes/bay.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
-        <material><ambient>0.22 0.20 0.33 1</ambient><diffuse>0.55 0.50 0.82 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+        <material><ambient>0.21 0.15 0.34 1</ambient><diffuse>0.53 0.37 0.86 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
       </visual>
       <visual name='gear_visual'>
         <geometry><mesh><uri>model://que/meshes/gear.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
@@ -35,7 +39,7 @@
       </visual>
       <visual name='guard_visual'>
         <geometry><mesh><uri>model://que/meshes/guard.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
-        <material><ambient>0.22 0.20 0.33 1</ambient><diffuse>0.55 0.50 0.82 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+        <material><ambient>0.21 0.15 0.34 1</ambient><diffuse>0.53 0.37 0.86 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
       </visual>
       <visual name='motors_visual'>
         <geometry><mesh><uri>model://que/meshes/motors.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
