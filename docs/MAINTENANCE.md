@@ -109,3 +109,4 @@
 - **修复**：series 结果写 bag 目录 series.json，rosbridge 只发 200 字节"就绪"通知（含 url），前端 fetch 下载——彻底绕开 DDS 大消息问题，任意大小都可靠。
 - 直线问题：剔除 timestamp/timestamp_sample 字段（1e15 量级压扁 Y 轴）。
 - web_server /bags 路由与 32MB max_size 保留（防御性）。
+- **series.json 裸 NaN 修复**：Python json.dump 默认输出非法 JSON 的 NaN 字面量（battery 等话题含 NaN 字段），浏览器 r.json() 拒绝。后端统一将非有限值转 null（uPlot 显示为断点）。

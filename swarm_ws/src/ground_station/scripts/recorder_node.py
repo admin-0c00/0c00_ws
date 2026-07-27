@@ -16,6 +16,7 @@ stop 时 SIGINT 优雅停止并写入 metadata.json（备注/话题/大小）。
 由 start_ground_station.sh 拉起，依赖: ros2 bag（ros-humble-rosbag2）。
 """
 import json
+import math
 import os
 import re
 import shutil
@@ -198,7 +199,8 @@ class RecorderNode(Node):
                             continue
                         if k in ("timestamp", "timestamp_sample"):
                             continue   # 纳秒时间戳(~1e15)会把 Y 轴撑爆，其他字段全压成直线
-                        fields.setdefault(k, []).append(float(v))
+                        # NaN/Inf 不是合法 JSON（浏览器会解析失败），转 null，uPlot 显示为断点
+                        fields.setdefault(k, []).append(float(v) if math.isfinite(v) else None)
                 i += 1
             if not ts:
                 self.series_pub.publish(String(data=json.dumps(
