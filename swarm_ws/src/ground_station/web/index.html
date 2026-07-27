@@ -20,6 +20,11 @@
   #hint { position: absolute; bottom: 10px; left: 12px; font-size: 12px; color: #8b949e; user-select: none; }
   #fence-alert { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(248, 81, 73, 0.92); color: #fff; font-size: 14px; font-weight: 600; padding: 8px 20px; border-radius: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
   #fence-alert.show { opacity: 1; }
+  #cmd-toast { position: fixed; right: 16px; bottom: 16px; background: rgba(33, 38, 45, 0.95); color: #c9d1d9; border: 1px solid #30363d; border-radius: 8px; padding: 8px 16px; font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none; z-index: 99; }
+  #cmd-toast.show { opacity: 1; }
+  #cmd-toast.ok { border-color: #2ea043; color: #3fb950; }
+  #cmd-toast.err { border-color: #da3633; color: #f85149; }
+  .gbtn:disabled, .cbtn:disabled { opacity: 0.45; cursor: wait; }
   .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; }
   .card.stale { opacity: 0.45; }
   .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
@@ -104,7 +109,7 @@
       </div>
     </div>
   </div>
-  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div></div>
 </div>
 
 <script>
@@ -228,8 +233,9 @@ function createCard(u) {
 }
 
 // ============================== 控制指令 ==============================
+// 按钮指令走可靠通道：后端 web_control_node（基于 swarm_api）执行，
+// 命令自动重发 + 飞控状态确认 + 结果回执；围栏自动动作仍走原直发通道（飞控 GF_* 是主保险）。
 // MAVLink 命令: 400=ARM_DISARM, 22=NAV_TAKEOFF, 20=NAV_RTL, 21=NAV_LAND
-// 链路已验证: rosbridge 默认 QoS (reliable) 可匹配 PX4 fmu/in 的 reliable 订阅
 const MAV_CMDS = {
   arm:     { command: 400, param1: 1 },
   disarm:  { command: 400, param1: 0 },
@@ -239,22 +245,56 @@ const MAV_CMDS = {
   hold:    { command: 17 },   // NAV_LOITER_UNLIM -> 切 Hold
 };
 const FENCE_ACTION_NAMES = { hold: '悬停', land: '降落', rtl: '返航' };
+const ACTION_NAMES = { arm: '解锁', disarm: '上锁', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停' };
 const cmdTopics = {};
 
-function sendCmd(u, action) {
+// ---------- 可靠通道（按钮） ----------
+const webCmdTopic = new ROSLIB.Topic({ ros, name: '/web_control/cmd', messageType: 'std_msgs/msg/String' });
+webCmdTopic.advertise();
+new ROSLIB.Topic({ ros, name: '/web_control/result', messageType: 'std_msgs/msg/String' })
+  .subscribe((m) => {
+    let r; try { r = JSON.parse(m.data); } catch { return; }
+    finishCmd(r);
+  });
+
+let cmdSeq = 0;
+const pendingCmds = {};   // id -> { desc, btns: Set, timer }
+
+function sendCmd(u, action, btn) {
+  const id = ++cmdSeq;
+  const payload = { id, ns: u.ns, action };
+  if (action === 'takeoff') payload.alt = parseFloat(document.getElementById('takeoff-alt').value) || 1.5;
+  const p = { desc: `${u.ns} ${ACTION_NAMES[action] || action}`, btns: new Set(), timer: null };
+  if (btn) { p.btns.add(btn); btn.disabled = true; }
+  p.timer = setTimeout(() => finishCmd({ id, ok: false, msg: '后端无响应（web_control_node 未运行？）' }), 60000);
+  pendingCmds[id] = p;
+  webCmdTopic.publish(new ROSLIB.Message({ data: JSON.stringify(payload) }));
+  showToast(`${p.desc} 执行中…`, null);
+  return id;
+}
+
+function finishCmd(r) {
+  const p = pendingCmds[r.id];
+  if (!p) return;
+  clearTimeout(p.timer);
+  delete pendingCmds[r.id];
+  p.btns.forEach((b) => { b.disabled = false; });
+  showToast(`${p.desc}${r.ok ? ' 成功 ✔' : ' 失败: ' + r.msg}`, r.ok);
+}
+
+let toastTimer = null;
+function showToast(text, ok) {
+  const el = document.getElementById('cmd-toast');
+  el.textContent = text;
+  el.className = 'show' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+// ---------- 直发通道（围栏自动动作保留） ----------
+function sendFenceCmd(u, action) {
   const def = MAV_CMDS[action];
-  if (!def) return;
-  // PX4 的起飞命令只负责切到 AUTO_TAKEOFF 模式，未解锁时不会执行；
-  // 因此起飞 = 先解锁，1 秒后再发起飞（已解锁时 arm 是无害的重复命令）。
-  // 目标高度: param7 是 AMSL，用各机自己的 ref_alt（EKF 原点海拔）+ 用户填写的高度
-  if (action === 'takeoff') {
-    const h = parseFloat(document.getElementById('takeoff-alt').value) || 1.5;
-    if (!u.pos || !Number.isFinite(u.pos.ref_alt)) { alert(`${u.ns} 位置数据未就绪，无法起飞`); return; }
-    publishCmd(u, MAV_CMDS.arm);
-    setTimeout(() => publishCmd(u, { ...def, param7: u.pos.ref_alt + h }), 1000);
-    return;
-  }
-  publishCmd(u, def);
+  if (def) publishCmd(u, def);
 }
 
 function publishCmd(u, def) {
@@ -284,7 +324,7 @@ sidebar.addEventListener('click', (e) => {
   if (!u) return;
   const a = btn.dataset.a;
   if (a === 'disarm' && !confirm(`确认对 ${u.ns} 上锁？\n飞行中上锁电机会直接停转！`)) return;
-  sendCmd(u, a);
+  sendCmd(u, a, btn);
 });
 
 // 围栏动作（下拉选择: 关闭/悬停/降落/返航），越界时由 update3D 读取当前值执行
@@ -305,7 +345,12 @@ document.querySelectorAll('#global-ctl .gbtn[data-cmd]').forEach((b) => {
     const online = Object.values(uavs).filter((u) => Date.now() - u.lastSeen < 3000);
     if (!online.length) { alert('当前没有在线飞机'); return; }
     if (!confirm(`确认对 ${online.length} 架在线飞机执行【${b.textContent}】？`)) return;
-    online.forEach((u) => sendCmd(u, b.dataset.cmd));
+    b.disabled = true;
+    const ids = online.map((u) => sendCmd(u, b.dataset.cmd));
+    // 全部结果回执（或超时）后恢复按钮
+    const wait = setInterval(() => {
+      if (ids.every((id) => !pendingCmds[id])) { clearInterval(wait); b.disabled = false; }
+    }, 500);
   });
 });
 
@@ -592,11 +637,15 @@ function update3D(u) {
   u.label.position.set(p.x, p.y + 0.7, p.z);
   u.outFence = Math.hypot(p.x, p.z) > FENCE_R || p.y > FENCE_H;
   // 越界自动执行用户选择的围栏动作（15 秒冷却；飞控侧 GF_* 是主保险）
+  // 已在目标模式中时不重复下发：NAV_RTL/NAV_LAND 重复发送会让 navigator 重新开始，
+  // 飞机在边界处被反复"重启"返航/降落流程而永远落不了地（实测踩过的坑）
+  const FENCE_NAV_DONE = { hold: 4, rtl: 5, land: 18 };   // AUTO_LOITER/AUTO_RTL/AUTO_LAND
   const armedNow = u.status && u.status.arming_state === 2;
   const fenceAct = fenceActionSel.value;
-  if (u.outFence && armedNow && fenceAct !== 'off' && (!u.lastFenceCmd || Date.now() - u.lastFenceCmd > 15000)) {
+  const alreadyDoing = u.status && u.status.nav_state === FENCE_NAV_DONE[fenceAct];
+  if (u.outFence && armedNow && fenceAct !== 'off' && !alreadyDoing && (!u.lastFenceCmd || Date.now() - u.lastFenceCmd > 15000)) {
     u.lastFenceCmd = Date.now();
-    sendCmd(u, fenceAct);
+    sendFenceCmd(u, fenceAct);
     showFenceAlert(u.ns, fenceAct);
   }
   if (u.att && u.att.q) {

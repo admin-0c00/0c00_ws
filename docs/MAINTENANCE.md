@@ -57,3 +57,11 @@
 - **`docs/OPEN_SOURCE_LICENSE.md`**：中文协议导读（权利义务速查、商标/专利保护、五层原创保护体系、第三方合规、贡献条款、违规联系）。
 - 15 个自研功能包的 `package.xml` license 字段由 BSD-3-Clause 统一改为 Apache-2.0；px4_msgs/px4_ros_com 为 PX4 官方包，保留 BSD 不动。
 - README 新增"开源协议"章节。
+## 2026-07-27 Web 地面站按钮可靠化（基于 swarm_api）
+
+- **新增控制后端 `web_control_node.py`**：按钮指令不再由网页直发单条 VehicleCommand，改为发 JSON 到 `/web_control/cmd`，后端用 swarm_api 执行（命令重发直到状态确认、起飞走完整 Offboard 流程、每机互斥锁防并发、结果回执 `/web_control/result`）。start/stop 脚本已集成。
+- **前端**：按钮显示"执行中/成功/失败"提示并防重复点击；围栏自动动作保留原直发通道。
+- **框架新增**：`Drone.arm/disarm/rtl` + `nav_state` 属性。
+- **两个实测抓到的缺陷**：
+  1. 网页围栏 15s 冷却期重复发 NAV_RTL 会让 navigator 不断重启返航，飞机在边界永远落不了地——前端修复：nav_state 已在目标模式时不再重复下发；
+  2. RTL 后 Offboard 设定点流不断会干扰返航-降落衔接，飞机悬在返航点上方——`rtl()` 现在与 `land()` 一样先停流（再 takeoff 自动重启）。已端到端验证 takeoff→RTL→落地→再起飞→降落。

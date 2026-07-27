@@ -70,6 +70,7 @@ class Drone:
         self.yaw = 0.0         # ENU 航向
         self.armed = False
         self.offboard = False
+        self.nav_state = 0     # PX4 导航状态原始值（VehicleStatus.nav_state）
 
         # ---- 当前设定点（由动作原语修改，流线程负责持续发出） ----
         self._mode = "position"           # "position" | "velocity"
@@ -117,6 +118,7 @@ class Drone:
     def _on_status(self, m):
         self.armed = m.arming_state == VehicleStatus.ARMING_STATE_ARMED
         self.offboard = m.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD
+        self.nav_state = m.nav_state
 
     # ---------------- 设定点流（后台 20Hz） ----------------
     def _stream_loop(self):
@@ -227,6 +229,41 @@ class Drone:
         self._mode = "velocity"
         self._vel = [float(vx), float(vy), float(vz)]
         self._yaw_rate = float(yaw_rate)
+
+    def arm(self, timeout=10.0):
+        """解锁（命令重发直到确认已解锁）。不切换飞行模式。"""
+        self._wait_connected()
+        t0 = time.time()
+        while not self.armed:
+            if time.time() - t0 > timeout:
+                raise DroneError(f"{self.ns}: 解锁超时（检查 preflight 状态）")
+            self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+            time.sleep(0.5)
+
+    def disarm(self, timeout=10.0):
+        """上锁（命令重发直到确认已上锁）。警告：飞行中上锁电机立即停转！"""
+        t0 = time.time()
+        while self.armed:
+            if time.time() - t0 > timeout:
+                raise DroneError(f"{self.ns}: 上锁超时")
+            self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+            time.sleep(0.5)
+
+    def rtl(self, timeout=15.0):
+        """返航（命令重发直到飞控确认进入返航模式）。返航与降落过程由 PX4 执行，
+        本函数在模式切换成功后即返回，不等待落地。
+
+        与 land() 同理必须先停掉 Offboard 设定点流：持续的设定点流会干扰
+        PX4 的返航-降落衔接，飞机会悬在返航点上方不落地（实测踩过的坑）。
+        再次 takeoff 会自动重启设定点流，无需额外处理。"""
+        self._streaming = False
+        self._wait_connected()
+        t0 = time.time()
+        while self.nav_state != VehicleStatus.NAVIGATION_STATE_AUTO_RTL:
+            if time.time() - t0 > timeout:
+                raise DroneError(f"{self.ns}: 返航模式切换超时")
+            self._command(VehicleCommand.VEHICLE_CMD_NAV_RETURN_TO_LAUNCH)
+            time.sleep(0.5)
 
     def hover(self):
         """原地悬停（把位置目标设为当前位置）。"""

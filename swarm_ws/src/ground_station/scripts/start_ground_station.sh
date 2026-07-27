@@ -32,3 +32,11 @@ else
     nohup python3 "$DIR/recorder_node.py" > /tmp/gs_recorder.log 2>&1 &
     echo "[ground_station] 话题记录节点已启动"
 fi
+
+# 控制后端（web 按钮的可靠动作执行，基于 swarm_api）
+if pgrep -f "web_control_node.py" > /dev/null; then
+    echo "[ground_station] 控制后端已在运行"
+else
+    nohup python3 "$DIR/web_control_node.py" > /tmp/gs_control.log 2>&1 &
+    echo "[ground_station] 控制后端已启动 (/web_control/cmd)"
+fi
