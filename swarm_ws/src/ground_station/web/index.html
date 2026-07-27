@@ -122,8 +122,9 @@
           <button class="cbtn" id="rec-preset-std">评估标准集</button>
           <button class="cbtn" id="rec-preset-all">全选</button>
           <button class="cbtn" id="rec-preset-none">清空</button>
+          <button class="cbtn" id="rec-refresh">刷新话题</button>
         </div>
-        <div id="rec-topics"><div style="color:#8b949e;font-size:12px">等待飞机上线…（请先启动仿真 start_swarm_sim.sh）</div></div>
+        <div id="rec-topics"><div style="color:#8b949e;font-size:12px">正在获取话题列表…（若无结果请确认仿真/真机已启动，点"刷新话题"重试）</div></div>
         <input id="rec-note" type="text" maxlength="200" placeholder="实验备注（可选，写入 bag 的 metadata.json）">
         <div class="ctl-row" style="margin-top:10px">
           <button class="cbtn" id="rec-start">开始记录</button>
@@ -205,6 +206,7 @@ function setupRos() {
   }
   // 记录状态订阅
   new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe(recStatusHandler);
+  fetchRecTopics();   // 动态枚举可记录话题（rosapi）
   // 发布者在新连接上重新注册
   recConfigTopic.advertise();
   Object.values(cmdTopics).forEach((t) => t.advertise());
@@ -223,7 +225,6 @@ function getUav(ns, idx) {
   if (!uavs[ns]) {
     uavs[ns] = { ns, idx, color: COLORS[(idx - 1) % COLORS.length], css: CSS_COLORS[(idx - 1) % CSS_COLORS.length], trailPts: [] };
     createCard(uavs[ns]); createMesh(uavs[ns]);
-    refreshRecTopics();
     document.getElementById('empty')?.remove();
     if (!selectedNs) selectUav(ns);   // 首架上线飞机默认选中（指点飞行目标）
   }
@@ -440,8 +441,50 @@ tabBtns.status.addEventListener('click', () => switchTab('status'));
 tabBtns.record.addEventListener('click', () => switchTab('record'));
 
 // 记录页: 勾选话题 -> /recorder/config (JSON) -> recorder_node 起 ros2 bag record
-const RECORDABLE = ['vehicle_status', 'vehicle_local_position', 'vehicle_global_position', 'vehicle_attitude', 'battery_status'];
+// 话题列表不写死：通过 rosapi 动态枚举 ROS 图中全部话题，用户想录什么勾什么
+// （以后视觉等新话题上线，点"刷新话题"即可出现）；勾选结果存 localStorage。
+const REC_PRESET_STD = ['vehicle_status', 'vehicle_local_position', 'battery_status'];
 const recConfigTopic = new ROSLIB.Topic({ ros, name: '/recorder/config', messageType: 'std_msgs/msg/String' });
+let recAllTopics = [];   // [{name, type}]
+
+function fetchRecTopics() {
+  ros.getTopics((res) => {
+    recAllTopics = res.topics.map((t, i) => ({ name: t, type: res.types[i] })).sort();
+    renderRecTopics();
+  }, () => showToast('获取话题列表失败（rosapi 未运行？）', false));
+}
+
+function recSavedSet() {
+  try { return new Set(JSON.parse(localStorage.getItem('recTopics') || '[]')); } catch { return new Set(); }
+}
+
+function renderRecTopics() {
+  const box = document.getElementById('rec-topics');
+  if (!recAllTopics.length) {
+    box.innerHTML = '<div style="color:#8b949e;font-size:12px">未发现话题（仿真/真机是否启动？）— 点"刷新话题"重试</div>';
+    return;
+  }
+  const saved = recSavedSet();
+  const isStd = (n) => REC_PRESET_STD.some((s) => n.endsWith('/' + s));
+  const groups = {};
+  for (const t of recAllTopics) {
+    const g = t.name.split('/')[1] || 'other';
+    (groups[g] = groups[g] || []).push(t);
+  }
+  box.innerHTML = Object.keys(groups)
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+    .map((g) => `<div class="rec-ns">${g}</div>` + groups[g].map((t) => {
+      const checked = saved.size ? saved.has(t.name) : isStd(t.name);   // 无历史选择时默认标准集
+      const warn = /Image|PointCloud/.test(t.type) ? ' <span style="color:#d29922">⚠大流量</span>' : '';
+      return `<label class="rec-topic"><input type="checkbox" ${checked ? 'checked' : ''} data-topic="${t.name}"> ${t.name.slice(g.length + 2)}${warn}</label>`;
+    }).join('')).join('');
+}
+
+// 勾选变化即持久化（刷新页面不丢）
+document.getElementById('rec-topics').addEventListener('change', () => {
+  const sel = [...document.querySelectorAll('#rec-topics input:checked')].map((c) => c.dataset.topic);
+  localStorage.setItem('recTopics', JSON.stringify(sel));
+});
 // advertise 与 status 订阅统一在 setupRos() 里做（重连自动重建）
 function recStatusHandler(m) {
   try {
@@ -473,26 +516,18 @@ document.getElementById('rec-bags').addEventListener('click', (e) => {
   recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'delete', name: btn.dataset.bag }) }));
 });
 
-// 预设话题组合
-const REC_PRESET_STD = ['vehicle_status', 'vehicle_local_position', 'battery_status'];
+// 预设话题组合（基于完整话题名匹配）
 function recSetChecks(fn) {
   document.querySelectorAll('#rec-topics input[type=checkbox]').forEach((c) => {
-    c.checked = fn(c.dataset.topic.split('/').pop());
+    c.checked = fn(c.dataset.topic);
   });
+  document.getElementById('rec-topics').dispatchEvent(new Event('change'));   // 同步到 localStorage
 }
-document.getElementById('rec-preset-std').addEventListener('click', () => recSetChecks((t) => REC_PRESET_STD.includes(t)));
+document.getElementById('rec-preset-std').addEventListener('click', () =>
+  recSetChecks((n) => REC_PRESET_STD.some((s) => n.endsWith('/' + s))));
 document.getElementById('rec-preset-all').addEventListener('click', () => recSetChecks(() => true));
 document.getElementById('rec-preset-none').addEventListener('click', () => recSetChecks(() => false));
-
-function refreshRecTopics() {
-  const box = document.getElementById('rec-topics');
-  const nss = Object.keys(uavs).sort();
-  if (!nss.length) { box.innerHTML = '<div style="color:#8b949e;font-size:12px">等待飞机上线…</div>'; return; }
-  box.innerHTML = nss.map((ns) =>
-    `<div class="rec-ns">${ns}</div>` +
-    RECORDABLE.map((t) => `<label class="rec-topic"><input type="checkbox" checked data-topic="/${ns}/fmu/out/${t}"> ${t}</label>`).join('')
-  ).join('');
-}
+document.getElementById('rec-refresh').addEventListener('click', fetchRecTopics);
 
 document.getElementById('rec-start').addEventListener('click', () => {
   const topics = [...document.querySelectorAll('#rec-topics input:checked')].map((c) => c.dataset.topic);
