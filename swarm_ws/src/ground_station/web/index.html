@@ -56,7 +56,15 @@
   .tab-bar { display: flex; gap: 6px; }
   .tab-btn { flex: 1; background: #161b22; color: #8b949e; border: 1px solid #30363d; border-radius: 6px; padding: 5px 0; font-size: 13px; cursor: pointer; }
   .tab-btn.active { background: #0d2740; color: #58d6ff; border-color: #1c4a6e; }
-  #tab-record { display: none; }
+  #tab-record, #tab-data { display: none; }
+  .bag-card { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
+  .bag-card .bag-title { font-size: 12px; font-weight: 600; font-family: "JetBrains Mono", Consolas, monospace; color: #c9d1d9; }
+  .bag-card .bag-meta { font-size: 11px; color: #8b949e; margin: 3px 0; white-space: pre-wrap; word-break: break-all; }
+  .bag-card .bag-note { font-size: 11px; color: #d29922; }
+  .bag-ops { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+  .bag-ops .cbtn { padding: 3px 8px; font-size: 12px; }
+  .bag-ops a.dl { color: #3fb950; font-size: 12px; align-self: center; text-decoration: none; border: 1px solid #2ea043; border-radius: 6px; padding: 3px 8px; }
+  .bag-playing { color: #f85149; font-size: 11px; }
   .rec-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
   .rec-card h3 { font-size: 13px; margin-bottom: 6px; }
   .rec-ns { font-size: 12px; font-weight: 600; margin-top: 6px; }
@@ -113,6 +121,7 @@
     <div class="tab-bar">
       <button class="tab-btn active" id="tab-btn-status">状态</button>
       <button class="tab-btn" id="tab-btn-record">记录</button>
+      <button class="tab-btn" id="tab-btn-data">数据</button>
     </div>
     <div id="tab-status"><div id="empty">等待无人机数据…<br>请先启动仿真 (start_swarm_sim.sh)</div></div>
     <div id="tab-record">
@@ -136,6 +145,14 @@
         <h3>历史记录</h3>
         <div id="rec-bags"><div style="color:#586069;font-size:12px">暂无记录</div></div>
         <div id="rec-total"></div>
+      </div>
+    </div>
+    <div id="tab-data">
+      <div class="rec-card">
+        <h3>数据分析与日志回放</h3>
+        <div style="font-size:12px;color:#8b949e">回放会把历史数据发回同名话题，地面站将"情景重现"。<b style="color:#d29922">回放前请先停止仿真/真机。</b></div>
+        <div id="data-bags"><div style="color:#586069;font-size:12px;margin-top:8px">暂无记录</div></div>
+        <div id="rec-total2"></div>
       </div>
     </div>
   </div>
@@ -204,9 +221,8 @@ function setupRos() {
       if (u.pos) { updateCard(u); update3D(u); }
     }, 200);
   }
-  // 记录状态订阅
+  // 记录状态订阅（可记录话题列表也随该状态下发）
   new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe(recStatusHandler);
-  fetchRecTopics();   // 动态枚举可记录话题（rosapi）
   // 发布者在新连接上重新注册
   recConfigTopic.advertise();
   Object.values(cmdTopics).forEach((t) => t.advertise());
@@ -428,31 +444,26 @@ setInterval(() => {
 }, 1000);
 
 // ============================== 标签页与话题记录 ==============================
-const tabBtns = { status: document.getElementById('tab-btn-status'), record: document.getElementById('tab-btn-record') };
+const tabBtns = { status: document.getElementById('tab-btn-status'),
+                  record: document.getElementById('tab-btn-record'),
+                  data: document.getElementById('tab-btn-data') };
 function switchTab(name) {
-  tabBtns.status.classList.toggle('active', name === 'status');
-  tabBtns.record.classList.toggle('active', name === 'record');
-  // 注意：不能用 '' 清空 display——#tab-record 的样式表规则是 display:none，
-  // 清掉内联样式会回落到 none，记录页永远显示不出来（历史 bug）
-  document.getElementById('tab-status').style.display = name === 'status' ? 'block' : 'none';
-  document.getElementById('tab-record').style.display = name === 'record' ? 'block' : 'none';
+  // 注意：必须用显式 block/none——样式表规则是 display:none，
+  // 用 '' 清内联样式会回落到 none（历史 bug：记录页曾因此永远空白）
+  for (const k of Object.keys(tabBtns)) {
+    tabBtns[k].classList.toggle('active', k === name);
+    document.getElementById('tab-' + k).style.display = k === name ? 'block' : 'none';
+  }
 }
-tabBtns.status.addEventListener('click', () => switchTab('status'));
-tabBtns.record.addEventListener('click', () => switchTab('record'));
+Object.keys(tabBtns).forEach((k) => tabBtns[k].addEventListener('click', () => switchTab(k)));
 
 // 记录页: 勾选话题 -> /recorder/config (JSON) -> recorder_node 起 ros2 bag record
-// 话题列表不写死：通过 rosapi 动态枚举 ROS 图中全部话题，用户想录什么勾什么
-// （以后视觉等新话题上线，点"刷新话题"即可出现）；勾选结果存 localStorage。
+// 话题列表不写死：recorder_node 周期性枚举"有发布者"的话题随状态下发
+// （只订阅不发布的幽灵话题录了也是空的；新话题上线 10s 内自动出现），勾选存 localStorage。
 const REC_PRESET_STD = ['vehicle_status', 'vehicle_local_position', 'battery_status'];
 const recConfigTopic = new ROSLIB.Topic({ ros, name: '/recorder/config', messageType: 'std_msgs/msg/String' });
-let recAllTopics = [];   // [{name, type}]
-
-function fetchRecTopics() {
-  ros.getTopics((res) => {
-    recAllTopics = res.topics.map((t, i) => ({ name: t, type: res.types[i] })).sort();
-    renderRecTopics();
-  }, () => showToast('获取话题列表失败（rosapi 未运行？）', false));
-}
+let recAllTopics = [];   // [{name, type}]，来自 /recorder/status 的 rec_topics
+let recTopicsSig = '';
 
 function recSavedSet() {
   try { return new Set(JSON.parse(localStorage.getItem('recTopics') || '[]')); } catch { return new Set(); }
@@ -489,6 +500,15 @@ document.getElementById('rec-topics').addEventListener('change', () => {
 function recStatusHandler(m) {
   try {
     const st = JSON.parse(m.data);
+    // 可记录话题列表（后端下发，10s 刷新）；列表有变化才重渲染，避免清空用户勾选
+    if (st.rec_topics) {
+      const sig = st.rec_topics.map((t) => t.name).join('|');
+      if (sig !== recTopicsSig) {
+        recTopicsSig = sig;
+        recAllTopics = st.rec_topics;
+        renderRecTopics();
+      }
+    }
     const el = document.getElementById('rec-status');
     el.classList.toggle('rec-on', st.recording);
     el.textContent = st.recording
@@ -505,8 +525,62 @@ function recStatusHandler(m) {
       : '<div style="color:#586069;font-size:12px">暂无记录</div>';
     document.getElementById('rec-total').textContent =
       st.total_mb > 0 ? `bags 目录总占用 ${st.total_mb} MB` + (st.total_mb > 20480 ? '（偏大，建议清理）' : '') : '';
+    renderDataPage(st);
   } catch (e) { /* 忽略非 JSON 状态 */ }
 }
+
+// ============================== 数据页（分析与回放） ==============================
+let lastExportToast = null;
+function renderDataPage(st) {
+  // 导出完成时提示一次
+  if (st.last_export && st.last_export.ok) {
+    const key = st.last_export.name + st.last_export.zip;
+    if (key !== lastExportToast) {
+      lastExportToast = key;
+      showToast(`${st.last_export.name} 导出完成 ✔ 点卡片里的"下载 CSV"`, true);
+    }
+  }
+  const box = document.getElementById('data-bags');
+  const bags = st.bags || [];
+  if (!bags.length) {
+    box.innerHTML = '<div style="color:#586069;font-size:12px;margin-top:8px">暂无记录（先在"记录"页录制）</div>';
+  } else {
+    box.innerHTML = bags.map((b) => {
+      const playing = st.playing && st.playing_name === b.name;
+      const exporting = st.exporting === b.name;
+      const meta = [b.dur != null ? `时长 ${b.dur}s` : null,
+                    b.msgs != null ? `${b.msgs} 条` : null,
+                    `${b.mb} MB`].filter(Boolean).join(' · ');
+      const dl = (st.last_export && st.last_export.ok && st.last_export.name === b.name)
+        ? `<a class="dl" href="/bags/${st.last_export.zip}" download>⬇ 下载 CSV (${st.last_export.topics} 话题)</a>` : '';
+      return `<div class="bag-card">
+        <div class="bag-title">${b.name} ${playing ? '<span class="bag-playing">● 回放中</span>' : ''}</div>
+        <div class="bag-meta">${meta}</div>
+        ${b.note ? `<div class="bag-note">备注: ${b.note}</div>` : ''}
+        <div class="bag-ops">
+          ${playing ? `<button class="cbtn danger" data-act="play_stop" data-bag="${b.name}">停止回放</button>`
+                    : `<button class="cbtn" data-act="play" data-bag="${b.name}" ${st.playing ? 'disabled' : ''}>回放</button>`}
+          <button class="cbtn" data-act="export_csv" data-bag="${b.name}" ${exporting ? 'disabled' : ''}>${exporting ? '导出中…' : '导出 CSV'}</button>
+          ${dl}
+          <button class="cbtn danger" data-act="delete" data-bag="${b.name}">删除</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('rec-total2').textContent =
+    st.total_mb > 0 ? `bags 目录总占用 ${st.total_mb} MB` : '';
+}
+
+// 数据页操作（事件委托）
+document.getElementById('data-bags').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act, name = btn.dataset.bag;
+  if (act === 'delete' && !confirm(`确认删除 ${name}？删除后不可恢复`)) return;
+  if (act === 'play' && !confirm(`回放 ${name}？\n\n回放会把历史数据发回同名话题。\n请确认仿真/真机已停止，否则真假数据会混在一起！`)) return;
+  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: act, name }) }));
+  if (act === 'export_csv') showToast(`${name} 导出中…`, null);
+});
 
 // 删除历史 bag（事件委托）
 document.getElementById('rec-bags').addEventListener('click', (e) => {
@@ -527,7 +601,7 @@ document.getElementById('rec-preset-std').addEventListener('click', () =>
   recSetChecks((n) => REC_PRESET_STD.some((s) => n.endsWith('/' + s))));
 document.getElementById('rec-preset-all').addEventListener('click', () => recSetChecks(() => true));
 document.getElementById('rec-preset-none').addEventListener('click', () => recSetChecks(() => false));
-document.getElementById('rec-refresh').addEventListener('click', fetchRecTopics);
+document.getElementById('rec-refresh').addEventListener('click', renderRecTopics);
 
 document.getElementById('rec-start').addEventListener('click', () => {
   const topics = [...document.querySelectorAll('#rec-topics input:checked')].map((c) => c.dataset.topic);

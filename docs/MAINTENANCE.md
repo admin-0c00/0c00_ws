@@ -90,3 +90,8 @@
 
 - 话题列表不再写死 5 个：通过 rosapi（rosbridge 自带）动态枚举 ROS 图全部话题，按命名空间分组渲染；图像/点云类标注 ⚠大流量。视觉等新话题上线后点"刷新话题"即可出现，无需改代码。
 - 勾选结果存 localStorage（刷新不丢）；无历史选择时默认评估标准集；新增"刷新话题"按钮。后端 recorder_node 无需改动（本就接受任意话题名）。
+## 2026-07-27 数据页（分析/回放/导出）+ 幽灵话题过滤
+
+- **新增"数据"标签页**：bag 卡片显示时长/消息数/大小/备注；回放（ros2 bag play，含停仿真确认框）、导出 CSV（通用实现：rosidl 反序列化 + message_to_ordereddict，全字段成列，不限消息类型）、zip 下载（web_server 新增 /bags/ 路由，防穿越）、删除。
+- **幽灵话题根治**：rosapi 的 /rosapi/publishers 只支持单话题查询（空响应的坑），改为 recorder_node 用节点图 API count_publishers 枚举"有发布者"的话题，随 /recorder/status 10s 下发；页面预订阅的 uav_4~6 不再出现。
+- 事故记录：编辑失误把 __init__ 尾部并入 _refresh_rec_topics 导致节点不发布（前台运行+日志定位修复）。

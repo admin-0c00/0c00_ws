@@ -21,6 +21,7 @@ from websockets.datastructures import Headers
 from websockets.http11 import Response
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+BAGS_DIR = Path.home() / "0c00_ws/swarm_ws/logs/bags"   # 数据页 CSV 导出下载
 ROSBRIDGE = "ws://localhost:9090"
 LISTEN_PORT = 8080
 
@@ -30,6 +31,18 @@ mimetypes.add_type("application/javascript", ".js")
 async def process_request(connection, request):
     if request.path == "/ws":
         return None  # 交给 WebSocket 握手
+    if request.path.startswith("/bags/"):
+        # bag 产物下载（CSV 导出 zip 等），限制在 bags 目录内防路径穿越
+        rel = request.path[len("/bags/"):]
+        target = (BAGS_DIR / rel).resolve()
+        if not str(target).startswith(str(BAGS_DIR)) or not target.is_file():
+            return Response(404, "Not Found",
+                            Headers([("Content-Type", "text/plain")]), b"not found")
+        body = target.read_bytes()
+        return Response(200, "OK",
+                        Headers([("Content-Type", "application/octet-stream"),
+                                 ("Content-Disposition", f'attachment; filename="{target.name}"'),
+                                 ("Content-Length", str(len(body)))]), body)
     rel = request.path.lstrip("/") or "index.html"
     target = (WEB_DIR / rel).resolve()
     if not str(target).startswith(str(WEB_DIR)) or not target.is_file():
