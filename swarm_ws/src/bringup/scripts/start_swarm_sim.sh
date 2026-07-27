@@ -1,7 +1,10 @@
 #!/bin/bash
 # SwarmCore 多机 SITL 一键启动（产品定义书 M2 仿真包）
-# 用法: start_swarm_sim.sh [无人机数量=3] [HEADLESS=1]
+# 用法: start_swarm_sim.sh [无人机数量=3] [HEADLESS=1] [机型=gz_x500]
 # 每架无人机: 独立 PX4 实例, ROS 2 命名空间 /uav_<N>/fmu/..., 出生点 y 轴间隔 2m
+# 机型: gz_x500(默认) / gz_x500_depth(深度相机) / gz_x500_vision(双下视+前视) 等，
+#       需存在对应 ROMFS airframe 文件（ROMFS/px4fmu_common/init.d-posix/airframes/40xx_<机型>）。
+#       自有机型接入时同样放一个 airframe + gz/models/<模型目录> 即可在此直接用。
 set -u
 
 N=${1:-3}
@@ -10,6 +13,21 @@ if [ "${2:-1}" = "0" ]; then
     unset HEADLESS 2>/dev/null || true
 else
     export HEADLESS=1
+fi
+# 第 3 参数: 机型（PX4_SIM_MODEL），默认 gz_x500
+MODEL=${3:-gz_x500}
+# 机型合法性预检：airframe 文件不存在时 PX4 会起不来，提前报错比翻日志友好
+PX4_DIR_CHECK="$HOME/0c00_ws/PX4-Autopilot"
+AIRFRAME_DIR="$PX4_DIR_CHECK/ROMFS/px4fmu_common/init.d-posix/airframes"
+MODEL_DIR="$PX4_DIR_CHECK/Tools/simulation/gz/models/${MODEL#gz_}"
+if ! ls "$AIRFRAME_DIR"/*_"$MODEL" >/dev/null 2>&1; then
+    echo "[swarm] 错误: 机型 '$MODEL' 没有对应 airframe（$AIRFRAME_DIR/*_$MODEL 不存在）"
+    echo "[swarm] 可用机型: $(ls "$AIRFRAME_DIR" | grep -oP '(?<=_gz_).*' | sed 's/^/gz_/' | sort -u | tr '\n' ' ')"
+    exit 1
+fi
+if [ ! -d "$MODEL_DIR" ]; then
+    echo "[swarm] 错误: 机型 '$MODEL' 没有对应 Gazebo 模型目录（$MODEL_DIR 不存在）"
+    exit 1
 fi
 
 PX4_DIR="$HOME/0c00_ws/PX4-Autopilot"
@@ -60,13 +78,13 @@ for i in $(seq 0 $((N - 1))); do
     cd "$inst_dir"
     # stdin 必须是"永不 EOF"的输入: 若给 /dev/null，nsh 会读 EOF 死循环刷 pxh> 提示符（几小时能写几十 GB 日志）
     PX4_SIMULATOR="gz" \
-    PX4_SIM_MODEL="gz_x500" \
+    PX4_SIM_MODEL="$MODEL" \
     PX4_GZ_WORLD="default" \
     PX4_UXRCE_DDS_NS="uav_$sysid" \
     PX4_GZ_MODEL_POSE="0,$y,0,0,0,0" \
     nohup "$PX4_BIN" -i "$i" > "$LOG_DIR/px4_uav_$sysid.log" 2>&1 < <(tail -f /dev/null) &
     echo $! >> "$PID_FILE"
-    echo "[swarm] uav_$sysid 启动中 (实例 $i, 出生点 0,$y) ..."
+    echo "[swarm] uav_$sysid 启动中 (实例 $i, 出生点 0,$y, 机型 $MODEL) ..."
     # 第一个实例要拉起 Gazebo server，多等一会；后续实例等待 spawn
     if [ "$i" -eq 0 ]; then sleep 12; else sleep 6; fi
 done

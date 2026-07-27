@@ -120,3 +120,8 @@
 ## 2026-07-28 README 重构
 
 - README 全面重构：顶部加公司 Logo（docs/logo.png，极简白横版）与官网链接区；新增"在线体验"板块（https://0c00.com/ground-station/ 与使用说明 https://0c00.com/docs/SwarmCore/ground-station/）；内容重组为 简介/在线体验/系统要求/一键安装/快速上手/文档/目录结构/开源协议/注意事项，文末加官网落款。
+## 2026-07-28 自有机型接入管线（机型参数化 + 传感器桥接）
+
+- start_swarm_sim.sh 新增第 3 参数"机型"（默认 gz_x500）：PX4_SIM_MODEL 参数化，启动前预检 airframe 文件与 gz 模型目录，非法机型直接报错并列出可用机型。自有机型接入只需：gz/models/<模型> + ROMFS airframe 文件。
+- 新增 start_sensor_bridge.sh：Gazebo 相机/深度/点云话题桥到 ROS 2（ros_gz_bridge）。实测 gz_x500_depth（OakD-Lite）：/camera 18.5Hz、/depth_camera 23Hz、/depth_camera/points 18.7Hz、camera_info 640x480 正常。
+- 坑记录：① 点云的 Gazebo 类型是 PointCloudPacked 不是 PointCloud，写错桥接静默失败（仅一行 WARN）；② Humble+Garden 的桥接包是 ros-humble-ros-gzgarden-bridge（非默认 ros-gz）；③ 脚本里 set -u 要放在 source setup.bash 之后（AMENT_TRACE_SETUP_FILES 未绑定）。

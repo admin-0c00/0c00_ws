@@ -59,10 +59,12 @@ source /opt/ros/humble/setup.bash
 source ~/0c00_ws/swarm_ws/install/setup.bash   # 按实际 clone 路径调整
 ```
 
-**1. 启动仿真**（第 2 个参数 0 = 带 Gazebo 界面，1 = 无头模式）：
+**1. 启动仿真**（第 2 个参数 0 = 带 Gazebo 界面，1 = 无头模式；第 3 个参数可选机型，默认 gz_x500）：
 
 ```bash
 ~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 3 0
+# 带深度相机的机型：start_swarm_sim.sh 1 1 gz_x500_depth
+# 相机/点云桥接到 ROS 2：start_sensor_bridge.sh（需 ros-humble-ros-gzgarden-bridge）
 ```
 
 **2. 起飞**：
