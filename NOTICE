@@ -50,9 +50,7 @@ Copyright 2026 零创无穷（成都）科技有限责任公司 (LCW Infinite (C
 自研代码
 ========================================================================
 
-除上述第三方组件外，本仓库全部代码（包括但不限于 swarm_ws/src/ 下的
-bringup、swarm_api、ground_station、swarm_msgs、safety_guard、
-swarm_fusion、swarm_task、uwb_driver、ugv_bridge、evaluation、
-perception_*、px4_bridge 等功能包，以及 install.sh 与文档）为
-零创无穷（成都）科技有限责任公司的原创作品，以 Apache License 2.0
-发布。
+除上述第三方组件外，本仓库全部代码（包括 swarm_ws/src/ 下的
+bringup、swarm_api、ground_station、swarm_msgs 等功能包，以及
+install.sh 与文档）为零创无穷（成都）科技有限责任公司的原创作品，
+以 Apache License 2.0 发布。

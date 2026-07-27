@@ -101,8 +101,11 @@ Web 地面站（状态卡片 + 3D 地图）：
     ├── swarm_api/            # 集群控制框架（Drone/Swarm/Strategy，Python）
     ├── ground_station/       # Web 地面站（rosbridge + Three.js）
     ├── swarm_msgs/           # 自定义消息（TargetMap / TaskAssignment）
-    ├── px4_msgs/ px4_ros_com/# PX4-ROS2 桥接
-    └── ...                   # 其余蜂群骨架包
+    └── px4_msgs/ px4_ros_com/# PX4-ROS2 桥接
+
+# 规划中的功能包（感知 perception_*、融合 swarm_fusion、任务 swarm_task、
+# 安全 safety_guard、无人车 ugv_bridge、UWB uwb_driver、评估 evaluation 等）
+# 按产品定义书 7.1 的结构，在对应子系统开发时创建，不预先放空壳。
 ```
 
 ## 开源协议

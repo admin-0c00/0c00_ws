@@ -76,3 +76,9 @@
 - **问题**：网页"上锁"在飞行中点击无反应——PX4 拒绝空中普通 disarm，后端重试 10s 才超时，且确认框承诺"停桨"与实际行为不符。
 - **修复**：`Drone.disarm` 前一半时间普通上锁，被拒后自动升级强制上锁（kill，param2=21196）。实测：地面上锁 0.6s，空中 5.6s 强制停桨。
 - **命名消歧**：按钮改为"解锁电机/上锁电机"（含全局按钮与提示文案），确认框明确"空中=强制停桨=坠落"。
+## 2026-07-27 仓库结构精简
+
+- 删除 11 个纯空壳骨架包（perception_*、safety_guard、swarm_fusion、swarm_task、ugv_bridge、uwb_driver、evaluation、px4_bridge）——只有 package.xml+CMakeLists、无任何引用，属产品定义书 7.1 的预建规划。原则改为"代码即现状，文档即规划"：子系统开发时才按定义书建包。
+- 现有 6 个包：bringup、swarm_api、ground_station、swarm_msgs（TargetMap/TaskAssignment）、px4_msgs、px4_ros_com。px4_bridge 职责已由 swarm_api + web_control_node 实际承担。
+- README 目录结构、NOTICE 自研代码清单同步修订。
+- **顺带抓到框架级 bug**：takeoff 失败（如 preflight 未过）后设定点流不会停止，残留的 20Hz 流会一直干扰 PX4 后续返航/降落（飞机悬着落不下来）。已修：takeoff 失败先停流再抛错。回归通过。

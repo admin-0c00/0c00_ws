@@ -181,12 +181,18 @@ class Drone:
 
         # 请求 Offboard + 解锁，命令要重发直到生效（飞控可能丢掉单条命令）
         t0 = time.time()
-        while not (self.offboard and self.armed):
-            if time.time() - t0 > timeout:
-                raise DroneError(f"{self.ns}: 进入 Offboard/解锁超时（检查 preflight 状态）")
-            self._command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)  # 主模式 6 = Offboard
-            self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-            time.sleep(0.5)
+        try:
+            while not (self.offboard and self.armed):
+                if time.time() - t0 > timeout:
+                    raise DroneError(f"{self.ns}: 进入 Offboard/解锁超时（检查 preflight 状态）")
+                self._command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)  # 主模式 6 = Offboard
+                self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
+                time.sleep(0.5)
+        except Exception:
+            # 起飞失败必须停流：残留的设定点流会干扰 PX4 后续的返航/降落衔接，
+            # 飞机会悬在目标高度落不下来（实测踩过的坑）
+            self._streaming = False
+            raise
 
         self.goto(x, y, z0 + alt, tol=tol, timeout=timeout)
 
