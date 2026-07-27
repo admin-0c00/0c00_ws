@@ -4,7 +4,8 @@
 输出 que/meshes/ 下 5 个分组 STL（FLU, mm）:
   frame.stl      底板+顶板（碳黑）
   bay.stl        电池仓+卡槽（深灰蓝）
-  gear_guard.stl 起落架+保护圈（浅灰白）
+  gear.stl       起落架（黑）
+  guard.stl      保护圈（淡紫）
   motors.stl     4 电机（银）
   standoffs.stl  4 螺柱（灰）
 """
@@ -24,7 +25,8 @@ M = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1]], dtype=float)   # CAD -> FLU
 GROUPS = {
     "frame": {"雀_底板_V3", "雀_顶板_V3_nx"},
     "bay": {"雀_电池仓_V3", "4S电池卡槽"},
-    "gear_guard": {"雀_起落架", "3.5寸桨保护圈"},
+    "gear": {"雀_起落架"},
+    "guard": {"3.5寸桨保护圈"},
     "motors": {"2004电机"},
     "standoffs": {"15mm螺柱"},
 }
