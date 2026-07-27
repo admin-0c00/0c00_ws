@@ -20,13 +20,26 @@
           <iyz>2.81e-06</iyz>
         </inertia>
       </inertial>
-      <visual name='body_visual'>
-        <geometry>
-          <mesh>
-            <uri>model://que/meshes/body.stl</uri>
-            <scale>0.001 0.001 0.001</scale>
-          </mesh>
-        </geometry>
+      <!-- 分组视觉：Gazebo 单 visual 只能单色，按零件分组配色（与地面站同色系） -->
+      <visual name='frame_visual'>
+        <geometry><mesh><uri>model://que/meshes/frame.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.10 0.12 0.15 1</ambient><diffuse>0.17 0.19 0.22 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+      </visual>
+      <visual name='bay_visual'>
+        <geometry><mesh><uri>model://que/meshes/bay.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.14 0.17 0.20 1</ambient><diffuse>0.29 0.33 0.38 1</diffuse><specular>0.3 0.3 0.3 1</specular></material>
+      </visual>
+      <visual name='gear_guard_visual'>
+        <geometry><mesh><uri>model://que/meshes/gear_guard.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.35 0.35 0.35 1</ambient><diffuse>0.85 0.86 0.87 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
+      </visual>
+      <visual name='motors_visual'>
+        <geometry><mesh><uri>model://que/meshes/motors.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.30 0.31 0.32 1</ambient><diffuse>0.72 0.74 0.76 1</diffuse><specular>0.8 0.8 0.8 1</specular></material>
+      </visual>
+      <visual name='standoffs_visual'>
+        <geometry><mesh><uri>model://que/meshes/standoffs.stl</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material><ambient>0.25 0.27 0.29 1</ambient><diffuse>0.56 0.60 0.63 1</diffuse><specular>0.6 0.6 0.6 1</specular></material>
       </visual>
       <collision name='body_collision'>
         <geometry>
@@ -91,7 +104,8 @@
           <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
         </inertia>
       </inertial>
-      <visual name='prop_visual'>
+      <visual name="prop_visual">
+        <material><ambient>0.5 0.2 0.1 1</ambient><diffuse>1.0 0.43 0.25 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
         <geometry>
           <mesh>
             <uri>model://que/meshes/prop_ccw.stl</uri>
@@ -117,7 +131,8 @@
           <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
         </inertia>
       </inertial>
-      <visual name='prop_visual'>
+      <visual name="prop_visual">
+        <material><ambient>0.5 0.2 0.1 1</ambient><diffuse>1.0 0.43 0.25 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
         <geometry>
           <mesh>
             <uri>model://que/meshes/prop_ccw.stl</uri>
@@ -143,7 +158,8 @@
           <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
         </inertia>
       </inertial>
-      <visual name='prop_visual'>
+      <visual name="prop_visual">
+        <material><ambient>0.5 0.2 0.1 1</ambient><diffuse>1.0 0.43 0.25 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
         <geometry>
           <mesh>
             <uri>model://que/meshes/prop_cw.stl</uri>
@@ -169,7 +185,8 @@
           <ixx>1.0e-06</ixx><iyy>1.0e-06</iyy><izz>2.0e-06</izz>
         </inertia>
       </inertial>
-      <visual name='prop_visual'>
+      <visual name="prop_visual">
+        <material><ambient>0.5 0.2 0.1 1</ambient><diffuse>1.0 0.43 0.25 1</diffuse><specular>0.4 0.4 0.4 1</specular></material>
         <geometry>
           <mesh>
             <uri>model://que/meshes/prop_cw.stl</uri>

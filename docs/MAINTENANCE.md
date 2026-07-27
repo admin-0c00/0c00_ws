@@ -131,3 +131,7 @@
 - **调试链（都是坑，按踩坑顺序）**：① Gazebo 模型网格必须 FLU（x前y左z上），一开始按 PX4 习惯的 FRD 做 → 模型上下颠倒+左右镜像；② OCP XDE 遍历装配：GetShape_s(组件标签)自带一层定位，嵌套装配双重变换，应取 referred 产品形状再沿装配链组合 loc；③ 机架中心必须按"修正后的"装配体重算（旧解析错了 12mm → 推力点与质量分布错位）；④ 自定义机型必须自带 imu/air_pressure/navsat 传感器块（否则 Preflight: Gyro/Compass missing）；⑤ **最关键**：PX4 SITL gz 的电机指令单位是 rad/s，airframe 的 SIM_GZ_EC_MAX 必须等于 SDF maxRotVelocity（x500 是 1000=1000 所以从来没暴露）——我们 EC_MAX=1000 而 maxRotVelocity=4650，推力只有 4.6%，且 PX4 估计高度 1.5m 而 Gazebo 真值在地面（假飞行），调参方向全被误导；⑥ 小机（0.48kg）默认角速率增益过猛 + CA_ROTOR_KM 要与 SDF momentConstant 对齐，否则姿态互搏吃满油门余量。
 - **地面站真机模型**：web/que_model.json（自烘焙 base64 网格 2.1MB：全机 21k 顶点顶点色 + 双旋向桨独立节点）。three r160 已删非模块 GLTFLoader，故自定义格式 + 30 行解析；createMesh 加载后自动换装，缺失时回退几何体拼装。QUE_SCALE=2（真机 0.23m 太小）。桨转动画沿用解锁转/上锁停。
 - 转换管线脚本存 tools/drone_model/（cadquery/trimesh venv 在 ~/0c00_ws/tools/cadenv）；CAD 源文件未入库。
+## 2026-07-28 雀模型配色（Gazebo + 地面站）
+
+- Gazebo 单 visual 只能单色：机体按零件分 5 组网格（frame/bay/gear_guard/motors/standoffs），SDF 逐组配 material；桨橙色。配色与地面站统一：碳黑板材/深灰蓝电池仓/浅灰白保护圈起落架/银电机/橙桨。
+- 地面站模型"看不出样子"主因是初版配色全深灰、暗背景上糊成一片：改为同色系高对比配色重烘焙，QUE_SCALE 2→3。

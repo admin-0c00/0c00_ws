@@ -998,7 +998,7 @@ function makeLabel(text, cssColor) {
 
 // ---- 真机模型（雀）：自烘焙 base64 网格（que_model.json），无 GLTFLoader 依赖 ----
 // three r160 已删除非模块 GLTFLoader，自定义格式 + 下面的 30 行解析最省心。
-const QUE_SCALE = 2.0;   // 真机仅 0.23m 宽，3D 图里放大 2 倍便于观察
+const QUE_SCALE = 3.0;   // 真机仅 0.23m 宽，3D 图里放大 3 倍便于观察
 let queModel = null;     // {body, ccw, cw, rotor_pos, prop_kind}
 
 function buildQueMesh(u) {
