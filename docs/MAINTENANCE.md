@@ -95,3 +95,7 @@
 - **新增"数据"标签页**：bag 卡片显示时长/消息数/大小/备注；回放（ros2 bag play，含停仿真确认框）、导出 CSV（通用实现：rosidl 反序列化 + message_to_ordereddict，全字段成列，不限消息类型）、zip 下载（web_server 新增 /bags/ 路由，防穿越）、删除。
 - **幽灵话题根治**：rosapi 的 /rosapi/publishers 只支持单话题查询（空响应的坑），改为 recorder_node 用节点图 API count_publishers 枚举"有发布者"的话题，随 /recorder/status 10s 下发；页面预订阅的 uav_4~6 不再出现。
 - 事故记录：编辑失误把 __init__ 尾部并入 _refresh_rec_topics 导致节点不发布（前台运行+日志定位修复）。
+## 2026-07-27 地面站内置数据曲线
+
+- 数据页 bag 卡片新增"查看数据"：选话题后后端 _series_worker 提取全部数值字段（降采样 ≤2000 点）发 /recorder/series，前端用内嵌 uPlot（离线库 50KB）在 3D 视图左下角画时序曲线，字段可勾选组合。不依赖 PlotJuggler/CDN。
+- bag_brief 增加话题清单（metadata.yaml 解析），卡片上直接选话题。

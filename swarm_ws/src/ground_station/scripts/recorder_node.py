@@ -46,14 +46,16 @@ def dir_size_mb(path):
 
 
 def bag_brief(path):
-    """bag 摘要：时长/消息数（metadata.yaml）+ 实验备注（metadata.json）。"""
-    dur, msgs, note = None, None, ""
+    """bag 摘要：时长/消息数（metadata.yaml）+ 实验备注（metadata.json）+ 话题清单。"""
+    dur, msgs, note, topics = None, None, "", []
     try:
         import yaml
         with open(os.path.join(path, "metadata.yaml"), encoding="utf-8") as f:
             rd = yaml.safe_load(f)["rosbag2_bagfile_information"]
         dur = round(rd["duration"]["nanoseconds"] / 1e9, 1)
         msgs = rd["message_count"]
+        topics = [t["topic_metadata"]["name"]
+                  for t in rd.get("topics_with_message_count", [])]
     except Exception:
         pass
     try:
@@ -61,7 +63,7 @@ def bag_brief(path):
             note = json.load(f).get("note", "")
     except Exception:
         pass
-    return dur, msgs, note
+    return dur, msgs, note, topics
 
 
 def list_bags(limit=10):
@@ -78,8 +80,9 @@ def list_bags(limit=10):
         mb = dir_size_mb(p)
         total += mb
         if len(bags) < limit:
-            dur, msgs, note = bag_brief(p)
-            bags.append({"name": n, "mb": mb, "dur": dur, "msgs": msgs, "note": note})
+            dur, msgs, note, topics = bag_brief(p)
+            bags.append({"name": n, "mb": mb, "dur": dur, "msgs": msgs,
+                         "note": note, "topics": topics})
     return bags, round(total, 1)
 
 
@@ -98,6 +101,7 @@ class RecorderNode(Node):
         self._rec_topics_at = 0.0
         self.create_subscription(String, "/recorder/config", self._config_cb, 10)
         self.status_pub = self.create_publisher(String, "/recorder/status", 10)
+        self.series_pub = self.create_publisher(String, "/recorder/series", 10)
         self.create_timer(1.0, self._publish_status)
         os.makedirs(BAG_BASE, exist_ok=True)
         self.get_logger().info(f"话题记录节点就绪，bag 目录: {BAG_BASE}")
@@ -136,6 +140,61 @@ class RecorderNode(Node):
             self._play_stop()
         elif action == "export_csv":
             self._export_csv(str(cfg.get("name") or ""))
+        elif action == "series":
+            self._series(str(cfg.get("name") or ""), str(cfg.get("topic") or ""))
+
+    MAX_SERIES_POINTS = 2000   # 曲线降采样上限，控制 JSON 体积
+
+    def _series(self, name, topic):
+        """读取 bag 中指定话题的数值字段时序（降采样），发到 /recorder/series 供网页画图。"""
+        if not BAG_NAME_RE.match(name) or not topic.startswith("/"):
+            self.get_logger().warn(f"拒绝曲线请求: {name!r} {topic!r}")
+            return
+        threading.Thread(target=self._series_worker, args=(name, topic), daemon=True).start()
+
+    def _series_worker(self, name, topic):
+        try:
+            from rosbag2_py import SequentialReader, StorageOptions, ConverterOptions
+            from rclpy.serialization import deserialize_message
+            from rosidl_runtime_py.convert import message_to_ordereddict
+            from rosidl_runtime_py.utilities import get_message
+
+            path = os.path.join(BAG_BASE, name)
+            reader = SequentialReader()
+            reader.open(StorageOptions(uri=path, storage_id="sqlite3"),
+                        ConverterOptions("", ""))
+            types = {t.name: t.type for t in reader.get_all_topics_and_types()}
+            if topic not in types:
+                self.series_pub.publish(String(data=json.dumps(
+                    {"name": name, "topic": topic, "ok": False, "msg": "bag 中无此话题"})))
+                return
+            msg_cls = get_message(types[topic])
+            # 先全量收集（bag 通常不大），再均匀降采样
+            ts, fields = [], {}
+            while reader.has_next():
+                tp, data, t = reader.read_next()
+                if tp != topic:
+                    continue
+                d = message_to_ordereddict(deserialize_message(data, msg_cls))
+                ts.append(t)
+                for k, v in d.items():
+                    if isinstance(v, bool) or not isinstance(v, (int, float)):
+                        continue
+                    fields.setdefault(k, []).append(float(v))
+            if not ts:
+                self.series_pub.publish(String(data=json.dumps(
+                    {"name": name, "topic": topic, "ok": False, "msg": "该话题没有数据"})))
+                return
+            stride = max(1, len(ts) // self.MAX_SERIES_POINTS + 1)
+            out = {"name": name, "topic": topic, "ok": True, "rows": len(ts),
+                   "t": [t / 1e9 for t in ts[::stride]],
+                   "series": {k: v[::stride] for k, v in fields.items()}}
+            self.series_pub.publish(String(data=json.dumps(out)))
+            self.get_logger().info(f"曲线数据: {name} {topic} ({len(ts)} 点, {len(fields)} 字段)")
+        except Exception as e:
+            self.get_logger().error(f"曲线读取失败: {e}")
+            self.series_pub.publish(String(data=json.dumps(
+                {"name": name, "topic": topic, "ok": False, "msg": str(e)})))
 
     def _play(self, name):
         """ros2 bag play 回放（子进程，SIGINT 可停）。"""

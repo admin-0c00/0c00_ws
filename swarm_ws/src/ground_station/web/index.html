@@ -5,8 +5,10 @@
 <title>SwarmCore 地面站</title>
 <link rel="icon" type="image/x-icon" href="favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon_32.png">
+<link rel="stylesheet" href="lib/uplot.min.css">
 <script src="lib/roslib.min.js"></script>
 <script src="lib/three.min.js"></script>
+<script src="lib/uplot.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; color: #e6edf3; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
@@ -65,6 +67,13 @@
   .bag-ops .cbtn { padding: 3px 8px; font-size: 12px; }
   .bag-ops a.dl { color: #3fb950; font-size: 12px; align-self: center; text-decoration: none; border: 1px solid #2ea043; border-radius: 6px; padding: 3px 8px; }
   .bag-playing { color: #f85149; font-size: 11px; }
+  .bag-topic-sel { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 2px 4px; font-size: 11px; max-width: 150px; }
+  #chart-panel { position: absolute; left: 12px; bottom: 34px; width: 560px; max-width: 70%; background: rgba(22, 27, 34, 0.96); border: 1px solid #30363d; border-radius: 8px; padding: 8px 12px; z-index: 50; }
+  #chart-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  #chart-head h3 { font-size: 12px; color: #c9d1d9; font-family: "JetBrains Mono", Consolas, monospace; word-break: break-all; }
+  #chart-close { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 14px; padding: 0 4px; }
+  #chart-fields { display: flex; flex-wrap: wrap; gap: 3px 12px; font-size: 11px; max-height: 66px; overflow-y: auto; margin-bottom: 4px; }
+  #chart-fields label { color: #8b949e; display: flex; gap: 3px; align-items: center; cursor: pointer; }
   .rec-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
   .rec-card h3 { font-size: 13px; margin-bottom: 6px; }
   .rec-ns { font-size: 12px; font-weight: 600; margin-top: 6px; }
@@ -156,7 +165,7 @@
       </div>
     </div>
   </div>
-  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div><div id="chart-panel" style="display:none"><div id="chart-head"><h3 id="chart-title">数据曲线</h3><button id="chart-close" title="关闭">✕</button></div><div id="chart-fields"></div><div id="chart-plot"></div></div></div>
 </div>
 
 <script>
@@ -223,6 +232,8 @@ function setupRos() {
   }
   // 记录状态订阅（可记录话题列表也随该状态下发）
   new ROSLIB.Topic({ ros, name: '/recorder/status', messageType: 'std_msgs/msg/String' }).subscribe(recStatusHandler);
+  // 数据曲线结果
+  new ROSLIB.Topic({ ros, name: '/recorder/series', messageType: 'std_msgs/msg/String' }).subscribe(seriesHandler);
   // 发布者在新连接上重新注册
   recConfigTopic.advertise();
   Object.values(cmdTopics).forEach((t) => t.advertise());
@@ -558,6 +569,8 @@ function renderDataPage(st) {
         <div class="bag-meta">${meta}</div>
         ${b.note ? `<div class="bag-note">备注: ${b.note}</div>` : ''}
         <div class="bag-ops">
+          <select class="bag-topic-sel" data-bag="${b.name}">${(b.topics || []).map((t) => `<option value="${t}">${t.split('/').pop()}</option>`).join('')}</select>
+          <button class="cbtn" data-act="view" data-bag="${b.name}">查看数据</button>
           ${playing ? `<button class="cbtn danger" data-act="play_stop" data-bag="${b.name}">停止回放</button>`
                     : `<button class="cbtn" data-act="play" data-bag="${b.name}" ${st.playing ? 'disabled' : ''}>回放</button>`}
           <button class="cbtn" data-act="export_csv" data-bag="${b.name}" ${exporting ? 'disabled' : ''}>${exporting ? '导出中…' : '导出 CSV'}</button>
@@ -578,9 +591,70 @@ document.getElementById('data-bags').addEventListener('click', (e) => {
   const act = btn.dataset.act, name = btn.dataset.bag;
   if (act === 'delete' && !confirm(`确认删除 ${name}？删除后不可恢复`)) return;
   if (act === 'play' && !confirm(`回放 ${name}？\n\n回放会把历史数据发回同名话题。\n请确认仿真/真机已停止，否则真假数据会混在一起！`)) return;
+  if (act === 'view') {
+    const sel = btn.closest('.bag-card').querySelector('.bag-topic-sel');
+    if (!sel || !sel.value) { showToast('该 bag 没有可查看的话题', false); return; }
+    viewSeries(name, sel.value);
+    return;
+  }
   recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: act, name }) }));
   if (act === 'export_csv') showToast(`${name} 导出中…`, null);
 });
+
+// ============================== 数据曲线（uPlot，离线库） ==============================
+let chartData = null, chartObj = null;
+
+function viewSeries(bagName, topic) {
+  document.getElementById('chart-panel').style.display = 'block';
+  document.getElementById('chart-title').textContent = `${bagName} · ${topic}（加载中…）`;
+  document.getElementById('chart-fields').innerHTML = '';
+  if (chartObj) { chartObj.destroy(); chartObj = null; }
+  document.getElementById('chart-plot').innerHTML = '';
+  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'series', name: bagName, topic }) }));
+}
+
+document.getElementById('chart-close').addEventListener('click', () => {
+  document.getElementById('chart-panel').style.display = 'none';
+});
+
+function seriesHandler(m) {
+  let d; try { d = JSON.parse(m.data); } catch { return; }
+  if (!d.ok) {
+    document.getElementById('chart-title').textContent = `加载失败: ${d.msg}`;
+    showToast(`曲线读取失败: ${d.msg}`, false);
+    return;
+  }
+  chartData = d;
+  const t0 = d.t[0] || 0;
+  chartData.rel = d.t.map((t) => +(t - t0).toFixed(3));
+  document.getElementById('chart-title').textContent = `${d.name} · ${d.topic}（${d.rows} 点）`;
+  const names = Object.keys(d.series);
+  document.getElementById('chart-fields').innerHTML = names.map((f, i) =>
+    `<label><input type="checkbox" data-f="${f}" ${i < 3 ? 'checked' : ''}> ${f}</label>`).join('');
+  drawChart();
+}
+
+document.getElementById('chart-fields').addEventListener('change', drawChart);
+
+const CHART_COLS = ['#58d6ff', '#3fb950', '#f85149', '#d29922', '#bc8cff', '#39c5cf', '#ff7b72', '#7ee787'];
+function drawChart() {
+  if (!chartData) return;
+  const checked = [...document.querySelectorAll('#chart-fields input:checked')].map((c) => c.dataset.f);
+  const el = document.getElementById('chart-plot');
+  el.innerHTML = '';
+  if (chartObj) { chartObj.destroy(); chartObj = null; }
+  if (!checked.length) return;
+  chartObj = new uPlot({
+    width: el.clientWidth || 530, height: 240,
+    scales: { x: { time: false } },
+    series: [{ label: 't(s)' }].concat(
+      checked.map((f, i) => ({ label: f, stroke: CHART_COLS[i % CHART_COLS.length], width: 1 }))),
+    axes: [
+      { stroke: '#8b949e', grid: { stroke: '#21262d' }, ticks: { stroke: '#30363d' } },
+      { stroke: '#8b949e', grid: { stroke: '#21262d' }, ticks: { stroke: '#30363d' } },
+    ],
+  }, [chartData.rel].concat(checked.map((f) => chartData.series[f])), el);
+}
 
 // 删除历史 bag（事件委托）
 document.getElementById('rec-bags').addEventListener('click', (e) => {
