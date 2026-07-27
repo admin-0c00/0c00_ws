@@ -350,6 +350,11 @@ function showToast(text, ok) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 4000);
 }
 
+// 全局脚本错误兜底：任何隐藏 JS 错误都以提示条显示（排障用，不用开 F12）
+window.addEventListener('error', (e) => {
+  showToast(`页面脚本错误: ${e.message} (${(e.filename || '').split('/').pop()}:${e.lineno})`, false);
+});
+
 // ---------- 直发通道（围栏自动动作保留） ----------
 function sendFenceCmd(u, action) {
   const def = MAV_CMDS[action];
@@ -611,20 +616,29 @@ document.getElementById('data-bags').addEventListener('click', (e) => {
 });
 
 // ============================== 数据曲线（uPlot，离线库） ==============================
-let chartData = null, chartObj = null, chartTimer = null;
+let chartData = null, chartObj = null, chartTimer = null, chartReq = null;
 
-function viewSeries(bagName, topic) {
+function viewSeries(bagName, topic, attempt) {
+  attempt = attempt || 1;
+  chartReq = { bagName, topic, attempt };
   document.getElementById('chart-panel').style.display = 'block';
-  document.getElementById('chart-title').textContent = `${bagName} · ${topic}（加载中…）`;
+  document.getElementById('chart-title').textContent =
+    `${bagName} · ${topic}（加载中…${attempt > 1 ? ' 重试' + (attempt - 1) : ''}）`;
   document.getElementById('chart-fields').innerHTML = '';
-  if (chartObj) { chartObj.destroy(); chartObj = null; }
-  document.getElementById('chart-plot').innerHTML = '';
+  if (attempt === 1) {
+    if (chartObj) { chartObj.destroy(); chartObj = null; }
+    document.getElementById('chart-plot').innerHTML = '';
+  }
   clearTimeout(chartTimer);
-  // 超时兜底：结果没到不能永远显示"加载中"（旧缓存页面收不到结果时尤其重要）
+  // 连接闪断会丢一次性结果（rosbridge 按订阅代际投递），自动重试 2 次再报错
   chartTimer = setTimeout(() => {
-    document.getElementById('chart-title').textContent = '加载超时：请 Ctrl+F5 刷新页面后重试';
-    showToast('曲线加载超时——页面可能是旧缓存，请 Ctrl+F5', false);
-  }, 15000);
+    if (chartReq && chartReq.attempt < 3) {
+      viewSeries(chartReq.bagName, chartReq.topic, chartReq.attempt + 1);
+    } else {
+      document.getElementById('chart-title').textContent = '加载超时：请检查 rosbridge 连接后重试';
+      showToast('曲线加载超时', false);
+    }
+  }, 10000);
   recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'series', name: bagName, topic }) }));
 }
 
@@ -635,11 +649,13 @@ document.getElementById('chart-close').addEventListener('click', () => {
 function seriesHandler(m) {
   let d; try { d = JSON.parse(m.data); } catch { return; }
   clearTimeout(chartTimer);
+  chartReq = null;
   if (!d.ok) {
     document.getElementById('chart-title').textContent = `加载失败: ${d.msg}`;
     showToast(`曲线读取失败: ${d.msg}`, false);
     return;
   }
+  document.getElementById('chart-title').textContent = `已收到 ${d.rows} 点，绘图中…`;   // 调试埋点：区分"没收到"和"绘图崩"
   chartData = d;
   const t0 = d.t[0] || 0;
   chartData.rel = d.t.map((t) => +(t - t0).toFixed(3));
