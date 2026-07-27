@@ -51,3 +51,9 @@
 - **示例**：`demo_single_drone.py`（单机，80 行）/ `demo_swarm_square.py`（三机，67 行），3 机仿真位置控制与速度控制均实测通过。
 - **wiki 教程** `swarmcore-swarm-api-tutorial.md`：API 参考、常见用法、Strategy 写法、安全机制、真机迁移、FAQ（官网上传由负责人处理）。
 - README：新增框架章节；修正仿真第 2 个参数说明写反（实际 0=GUI、1=无头）。
+## 2026-07-27 开源协议
+
+- **自研代码采用 Apache License 2.0**：根目录新增 `LICENSE`（协议全文）与 `NOTICE`（版权+商标声明+第三方组件清单）。选型理由：与 PX4(BSD-3)/ROS 2(Apache-2.0) 生态兼容；自带专利授权+反制条款与商标保护条款，符合产品定义书 13.1"宽松协议+商业双轨"策略。
+- **`docs/OPEN_SOURCE_LICENSE.md`**：中文协议导读（权利义务速查、商标/专利保护、五层原创保护体系、第三方合规、贡献条款、违规联系）。
+- 15 个自研功能包的 `package.xml` license 字段由 BSD-3-Clause 统一改为 Apache-2.0；px4_msgs/px4_ros_com 为 PX4 官方包，保留 BSD 不动。
+- README 新增"开源协议"章节。

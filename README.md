@@ -105,6 +105,14 @@ Web 地面站（状态卡片 + 3D 地图）：
     └── ...                   # 其余蜂群骨架包
 ```
 
+## 开源协议
+
+本仓库自研代码以 **Apache License 2.0** 开源（见 `LICENSE`），第三方组件（PX4、Micro-XRCE-DDS-Agent、px4_msgs 等）保留其各自许可证（见 `NOTICE`）。
+
+"灵簇"、"SwarmCore" 为我司商标（申请注册中），Apache-2.0 不授予商标使用权——可自由使用代码，但衍生作品不得以 "SwarmCore"/"灵簇" 命名。
+
+中文导读见 `docs/OPEN_SOURCE_LICENSE.md`。
+
 ## 注意事项
 
 - 本仓库是**快照发行版**：PX4 子模块已拍平，不能再执行 `git submodule update`；
