@@ -86,7 +86,7 @@
     <button class="gbtn" data-cmd="takeoff">全部起飞</button>
     <button class="gbtn" data-cmd="rtl">全部返航</button>
     <button class="gbtn" data-cmd="land">全部降落</button>
-    <button class="gbtn danger" data-cmd="disarm">全部上锁</button>
+    <button class="gbtn danger" data-cmd="disarm" title="全部上锁电机（锁桨），飞行中会强制停桨">全部上锁电机</button>
     <label id="coord-ctl">坐标系:
       <select id="coord-mode">
         <option value="gps" selected>GPS 共享</option>
@@ -251,11 +251,11 @@ function createCard(u) {
     </div>
     <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>
     <div class="ctl-row">
-      <button class="cbtn" data-a="arm">解锁</button>
-      <button class="cbtn" data-a="takeoff">起飞</button>
-      <button class="cbtn" data-a="rtl">返航</button>
-      <button class="cbtn" data-a="land">降落</button>
-      <button class="cbtn danger" data-a="disarm">上锁</button>
+      <button class="cbtn" data-a="arm" title="解锁电机（不起飞）">解锁电机</button>
+      <button class="cbtn" data-a="takeoff" title="起飞到设定高度">起飞</button>
+      <button class="cbtn" data-a="rtl" title="返航并自动降落">返航</button>
+      <button class="cbtn" data-a="land" title="原地降落">降落</button>
+      <button class="cbtn danger" data-a="disarm" title="上锁电机（锁桨）。飞行中会强制停桨！">上锁电机</button>
     </div>`;
   sidebar.appendChild(el);
   u.card = el;
@@ -274,7 +274,7 @@ const MAV_CMDS = {
   hold:    { command: 17 },   // NAV_LOITER_UNLIM -> 切 Hold
 };
 const FENCE_ACTION_NAMES = { hold: '悬停', land: '降落', rtl: '返航' };
-const ACTION_NAMES = { arm: '解锁', disarm: '上锁', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停', goto: '指点飞行' };
+const ACTION_NAMES = { arm: '解锁电机', disarm: '上锁电机', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停', goto: '指点飞行' };
 const cmdTopics = {};
 
 // ---------- 可靠通道（按钮） ----------
@@ -361,7 +361,7 @@ sidebar.addEventListener('click', (e) => {
   const u = uavs[btn.closest('.card')?.dataset.ns];
   if (!u) return;
   const a = btn.dataset.a;
-  if (a === 'disarm' && !confirm(`确认对 ${u.ns} 上锁？\n飞行中上锁电机会直接停转！`)) return;
+  if (a === 'disarm' && !confirm(`确认对 ${u.ns} 上锁电机（锁桨）？\n\n在地面：正常上锁。\n在空中：PX4 会拒绝普通上锁，5 秒后自动升级为强制停桨，飞机会坠落！`)) return;
   sendCmd(u, a, btn);
 });
 

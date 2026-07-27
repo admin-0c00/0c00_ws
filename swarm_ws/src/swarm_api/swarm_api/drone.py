@@ -240,13 +240,27 @@ class Drone:
             self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
             time.sleep(0.5)
 
+    # PX4 强制上锁（kill switch）：VEHICLE_CMD_COMPONENT_ARM_DISARM 的 param2 填这个魔数时，
+    # 即使判断为在空中也立即停转电机
+    _FORCE_DISARM_MAGIC = 21196.0
+
     def disarm(self, timeout=10.0):
-        """上锁（命令重发直到确认已上锁）。警告：飞行中上锁电机立即停转！"""
+        """上锁（锁桨，命令重发直到确认已上锁）。
+
+        前一半时间用普通上锁；若 PX4 因"判定在空中"持续拒绝，后一半时间自动升级为
+        强制上锁（kill，param2=21196）——因为地面站"上锁"按钮的语义就是必须停桨。
+        警告：飞行中调用必然停桨坠落，谨慎！
+        """
         t0 = time.time()
+        force = False
         while self.armed:
-            if time.time() - t0 > timeout:
+            elapsed = time.time() - t0
+            if elapsed > timeout:
                 raise DroneError(f"{self.ns}: 上锁超时")
-            self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
+            if elapsed > timeout / 2:
+                force = True
+            self._command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM,
+                          0.0, self._FORCE_DISARM_MAGIC if force else 0.0)
             time.sleep(0.5)
 
     def rtl(self, timeout=15.0):
