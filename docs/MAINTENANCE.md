@@ -149,3 +149,9 @@
 
 - 用户提供 ECOII2004-3000KV@16V 台架表（5寸桨满油 1170g）：DT90(90mm) 比台架桨小，按 D⁴ 缩尺保守折减 → motorConstant 2.2e-7（单电机最大 ~4.8N/485g，T/W≈3.9），MPC_THR_HOVER 0.6→0.5。起飞/前移/返航/降落复测通过。
 - 今后 GitHub 暂停同步（网络不稳），默认只推 Gitee + 内网 Gitea。
+## 2026-07-28 GPS 噪声治理 + EKF 高度原点修复（启动"出生在 1 米"根治）
+
+- **噪声按真机传感器水平配**：que 的 navsat 水平噪声 1e-6 度（≈0.11m，对 UWB 10cm）、垂直 0（对光流定高）。坑：gz navsat 水平噪声单位是"度"不是米（0.1 度=11km，曾把坐标干到 2 万米）。
+- **"出生在 1 米"根因链**（追了很长）：GPS 检查通过瞬间 EKF 把当时 z 估计锁为高度原点（gps_checks.cpp: _gps_alt_ref = gps.alt + pos(2)），而启动初期 z 漂移 1m+，漂移被永久锁存；x500 同病。排查中发现的连环坑：① 启动脚本的 px4-rc.params 一直写到 rootfs/instance_i，但 PX4 实际工作目录是 rootfs/<i>，且 rcS 按 PATH 搜索 px4-rc.params——实例目录必须加进 PATH 参数才生效（此前 RTL_RETURN_ALT/EKF2_HGT_REF 等全部静默未生效）；② HGT_REF 改气压计、关 GPS 垂直融合都治标不治本。
+- **解法（用户思路）**：启动脚本的 stdin 从 tail -f /dev/null 改为 tail 管道文件（nsh_pipe），启动后 ~4s 向各实例注入 ekf2 stop/start 热重启，收敛后 z≈0.03、ref_alt≈0.02。EKF_RESTART=0 可关，EKF_RESTART_DELAY 可调。起飞/降落复测通过，落地 z 不再虚高。
+- 附带修复：EKF2_GPS_CTRL 7→5（不用 GPS 垂直位置）、气压计显式启用、脚本默认 HGT_REF=0（气压计）。
