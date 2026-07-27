@@ -117,3 +117,6 @@
 
 - 应要求回退：上一提交的机间避障（APF/ORCA + 地面站开关，原 commit 34ee0e85）仿真演示效果不佳，整体回退到 e0da26ff。swarm_api 回到 0.1.0，ground_station 顶栏避障控件、web_control_node 的 avoidance 指令、demo_avoidance.py 一并移除。
 - 经验留存（若日后重做）：① GPS 仿真各机 EKF 原点不同，机间相对几何必须用 vehicle_global_position 换算共享平面；② 出生点间距 2m，避让距离默认 2m 会让停机飞机互相"避让"，演示参数必须小于机位间距；③ 脚本控制期间网页端再点按钮会造成双控制源同时发设定点，行为不可预期。
+## 2026-07-28 README 重构
+
+- README 全面重构：顶部加公司 Logo（docs/logo.png，极简白横版）与官网链接区；新增"在线体验"板块（https://0c00.com/ground-station/ 与使用说明 https://0c00.com/docs/SwarmCore/ground-station/）；内容重组为 简介/在线体验/系统要求/一键安装/快速上手/文档/目录结构/开源协议/注意事项，文末加官网落款。

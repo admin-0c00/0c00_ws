@@ -1,12 +1,36 @@
-# SwarmCore-Sim
+<p align="center">
+  <img src="docs/logo.png" alt="零创无穷 0c00" width="360">
+</p>
 
-零创无穷 SwarmCore 无人机蜂群仿真环境 —— 一体化发行版。
+<h1 align="center">SwarmCore-Sim</h1>
 
-包含完整可离线安装的仿真栈，**无需翻墙、无需拉取任何 git 子模块**：
+<p align="center">
+  零创无穷 SwarmCore 无人机蜂群仿真环境 · 一体化离线发行版<br>
+  <a href="https://0c00.com">公司官网</a> ·
+  <a href="https://0c00.com/ground-station/">在线体验</a> ·
+  <a href="https://0c00.com/docs/SwarmCore/ground-station/">使用文档</a> ·
+  <a href="https://gitee.com/admin_0c00/0c00_ws">Gitee 仓库</a>
+</p>
+
+---
+
+## 这是什么
+
+一套**开箱即用**的无人机蜂群仿真栈：PX4 SITL + Gazebo + ROS 2 Humble + 自研集群控制框架 + Web 地面站。
+clone 后一条脚本装完，**无需翻墙、无需拉取任何 git 子模块**：
 
 - **PX4-Autopilot v1.15.4** —— 全部 36 个子模块已拍平为普通文件
 - **Micro-XRCE-DDS-Agent v2.4.3** —— PX4 与 ROS 2 之间的 DDS 桥
-- **swarm_ws** —— ROS 2 Humble 工作空间（蜂群功能包 + px4_msgs + px4_ros_com + Web 地面站）
+- **swarm_ws** —— ROS 2 Humble 工作空间（swarm_api 集群框架、Web 地面站、px4_msgs / px4_ros_com 桥接、demo 示例）
+
+## 不想装环境？先在线体验
+
+我们在官网复刻了一套**在线版地面站**，打开浏览器就能看效果：
+
+- 在线体验：https://0c00.com/ground-station/
+- 使用说明：https://0c00.com/docs/SwarmCore/ground-station/
+
+觉得合适，再回来装本地完整仿真环境。
 
 ## 系统要求
 
@@ -24,9 +48,9 @@ cd 0c00_ws
 脚本自动完成：基础工具 → ROS 2 Humble（清华镜像）→ Gazebo Garden →
 Python 依赖（清华 pip 镜像）→ MicroXRCEAgent → PX4 SITL 编译 → swarm_ws 编译，最后自检。
 
-全程约 30~60 分钟（视机器性能），中途仅 Gazebo 的 apt 源在境外（通常可直连，如失败请参考文末说明）。
+全程约 30~60 分钟（视机器性能）。脚本幂等——中断后重跑会自动跳过已完成步骤。
 
-## 使用
+## 快速上手
 
 每次新开终端先加载环境：
 
@@ -35,35 +59,34 @@ source /opt/ros/humble/setup.bash
 source ~/0c00_ws/swarm_ws/install/setup.bash   # 按实际 clone 路径调整
 ```
 
-启动 3 机仿真（第 2 个参数 0 = 带 Gazebo 界面，1 = 无头模式）：
+**1. 启动仿真**（第 2 个参数 0 = 带 Gazebo 界面，1 = 无头模式）：
 
 ```bash
 ~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 3 0
 ```
 
-起飞：
+**2. 起飞**：
 
 ```bash
-ros2 run bringup swarm_takeoff.py     # 或按 bringup 包内说明
+ros2 run bringup swarm_takeoff.py
 ```
 
-单机飞行演示（客户 Demo：起飞 → 向前 2m → 顺时针 2m 正方形 → 回原点 → 降落）：
+**3. 飞一个 demo**（起飞 → 向前 2m → 顺时针 2m 正方形 → 回原点 → 降落）：
 
 ```bash
-# 先启动单机仿真: ~/0c00_ws/swarm_ws/src/bringup/scripts/start_swarm_sim.sh 1 1
+python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square_enu.py  # ENU 坐标（推荐新手）
 python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square.py      # NED 坐标版
-python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_square_enu.py  # ENU 坐标版（ROS 习惯，推荐新手）
 # 可调: --ros-args -p takeoff_alt:=2.0 -p side:=3.0
 ```
 
-集群控制框架 swarm_api（多机并行控制，仿真/真机同构）：
+**4. 集群控制框架 swarm_api**（多机并行，仿真/真机同构——真机接入零改动）：
 
 ```python
 from swarm_api import Swarm
 
-swarm = Swarm(num_drones=3)     # 自动发现在线飞机，真机零改动接入
+swarm = Swarm(num_drones=3)     # 自动发现在线飞机
 swarm.takeoff(1.5)              # 全群同时起飞
-swarm.goto_all([(0,2,1.5), (2,2,1.5), (4,2,1.5)])  # 各机飞各自目标，同时执行
+swarm.goto_all([(0,2,1.5), (2,2,1.5), (4,2,1.5)])  # 各机飞各自目标
 swarm.goto_formation("triangle", spacing=2.0, z=1.5)  # 编队：line/column/triangle/grid
 swarm.land()
 ```
@@ -72,22 +95,29 @@ swarm.land()
 # 框架版示例（先启动对应机数的仿真，如 start_swarm_sim.sh 3 1）：
 python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_single_drone.py  # 单机（Drone 类）
 python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_swarm_square.py  # 三机（Swarm 类）
-# 完整教程见 wiki《SwarmCore 集群控制框架（swarm_api）使用说明与教程》
 ```
 
-Web 地面站（状态卡片 + 3D 地图）：
+**5. Web 地面站**（状态卡片 + 3D 地图 + 指点飞行 + 电子围栏 + 数据录制回放）：
 
 ```bash
 ~/0c00_ws/swarm_ws/src/ground_station/scripts/start_ground_station.sh
 # 浏览器打开 http://localhost:8080
 ```
 
-停止：
+**停止**：
 
 ```bash
 ~/0c00_ws/swarm_ws/src/bringup/scripts/stop_swarm_sim.sh
 ~/0c00_ws/swarm_ws/src/ground_station/scripts/stop_ground_station.sh
 ```
+
+## 文档
+
+| 内容 | 地址 |
+| --- | --- |
+| Web 地面站使用说明 | https://0c00.com/docs/SwarmCore/ground-station/ |
+| swarm_api 框架教程 / API 参考 / demo 教程 | 见官网文档中心 https://0c00.com |
+| 更新维护记录 | `docs/MAINTENANCE.md` |
 
 ## 目录结构
 
@@ -123,3 +153,9 @@ Web 地面站（状态卡片 + 3D 地图）：
 - 仓库根部的 annotated tag `v1.15.4` 请勿删除，PX4 的 CMake 版本检测依赖它。
 - 若 Gazebo apt 源（packages.osrfoundation.org）访问失败：手动安装 `gz-garden` 后
   重新运行 `install.sh`（脚本幂等，已完成步骤会自动跳过）。
+
+---
+
+<p align="center">
+  <a href="https://0c00.com">零创无穷 0c00.com</a> · 无人机蜂群系统
+</p>
