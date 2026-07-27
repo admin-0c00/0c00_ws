@@ -23,7 +23,7 @@ from std_msgs.msg import String
 
 from swarm_api import Drone
 
-ACTIONS = {"arm", "disarm", "takeoff", "land", "rtl", "hover"}
+ACTIONS = {"arm", "disarm", "takeoff", "land", "rtl", "hover", "goto"}
 
 
 class WebControl(Node):
@@ -70,6 +70,8 @@ class WebControl(Node):
                 drone.rtl()
             elif action == "hover":
                 drone.hover()
+            elif action == "goto":   # 网页指点飞行：飞到 ENU 点 (x,y,z)，到达/超时回执
+                drone.goto(float(req["x"]), float(req["y"]), float(req["z"]))
             self._reply(req, True, "ok")
         except Exception as e:  # DroneError 或其他异常都回执给网页
             self._reply(req, False, str(e))

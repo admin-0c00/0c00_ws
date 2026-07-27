@@ -3,12 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <title>SwarmCore 地面站</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon_32.png">
 <script src="lib/roslib.min.js"></script>
 <script src="lib/three.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #0d1117; color: #e6edf3; font-family: "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
   #header { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #161b22; border-bottom: 1px solid #30363d; }
+  #header img#logo { height: 22px; display: block; }
+  #copyright { font-size: 11px; color: #586069; margin-left: 8px; white-space: nowrap; }
   #header h1 { font-size: 16px; font-weight: 600; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: #f85149; }
   .dot.ok { background: #3fb950; }
@@ -59,14 +63,26 @@
   .rec-topic { display: flex; align-items: center; gap: 6px; font-size: 12px; font-family: "JetBrains Mono", Consolas, monospace; padding: 1px 0; color: #8b949e; }
   #rec-status { font-size: 12px; color: #8b949e; margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
   #rec-status.rec-on { color: #f85149; }
+  #goto-toggle.on { background: #144a75; border-color: #58d6ff; box-shadow: 0 0 6px rgba(88, 214, 255, 0.5); }
+  #view3d.goto-mode canvas { cursor: crosshair; }
+  .card.selected { border-color: #58d6ff; box-shadow: 0 0 6px rgba(88, 214, 255, 0.35); }
+  .rec-presets { display: flex; gap: 6px; margin: 6px 0; }
+  .rec-presets .cbtn { flex: 1; padding: 3px 0; font-size: 12px; }
+  #rec-note { width: 100%; background: #0d2740; color: #e6edf3; border: 1px solid #1c4a6e; border-radius: 6px; padding: 5px 8px; font-size: 12px; margin-top: 8px; }
+  .bag-row { display: flex; align-items: center; gap: 6px; font-size: 11px; font-family: "JetBrains Mono", Consolas, monospace; padding: 2px 0; color: #8b949e; }
+  .bag-row .bag-name { flex: 1; color: #c9d1d9; }
+  .bag-row .bag-del { background: none; border: none; color: #f85149; cursor: pointer; font-size: 12px; padding: 0 2px; }
+  #rec-total { font-size: 11px; color: #586069; margin-top: 6px; }
 </style>
 </head>
 <body>
 <div id="header">
+  <img id="logo" src="logo.png" alt="0C∞">
   <h1>SwarmCore 地面站</h1>
   <div class="dot" id="conn-dot"></div>
   <span id="conn-text">连接 rosbridge...</span>
   <div id="global-ctl">
+    <button class="gbtn" id="goto-toggle" title="打开后单击 3D 地面，选中的飞机即飞向该点">指点飞行</button>
     <button class="gbtn" data-cmd="takeoff">全部起飞</button>
     <button class="gbtn" data-cmd="rtl">全部返航</button>
     <button class="gbtn" data-cmd="land">全部降落</button>
@@ -88,6 +104,7 @@
     <label id="takeoff-ctl">起飞高度:
       <input id="takeoff-alt" type="number" value="1.5" step="0.5" min="0.5" max="50"> m
     </label>
+    <span id="copyright">© 零创无穷</span>
   </div>
 </div>
 <div id="main">
@@ -100,12 +117,23 @@
     <div id="tab-record">
       <div class="rec-card">
         <h3>选择要记录的话题（只录勾选项，控制磁盘占用）</h3>
-        <div id="rec-topics"><div style="color:#8b949e;font-size:12px">等待飞机上线…</div></div>
+        <div class="rec-presets">
+          <button class="cbtn" id="rec-preset-std">评估标准集</button>
+          <button class="cbtn" id="rec-preset-all">全选</button>
+          <button class="cbtn" id="rec-preset-none">清空</button>
+        </div>
+        <div id="rec-topics"><div style="color:#8b949e;font-size:12px">等待飞机上线…（请先启动仿真 start_swarm_sim.sh）</div></div>
+        <input id="rec-note" type="text" maxlength="200" placeholder="实验备注（可选，写入 bag 的 metadata.json）">
         <div class="ctl-row" style="margin-top:10px">
           <button class="cbtn" id="rec-start">开始记录</button>
           <button class="cbtn danger" id="rec-stop" disabled>停止</button>
         </div>
         <div id="rec-status">未在记录</div>
+      </div>
+      <div class="rec-card">
+        <h3>历史记录</h3>
+        <div id="rec-bags"><div style="color:#586069;font-size:12px">暂无记录</div></div>
+        <div id="rec-total"></div>
       </div>
     </div>
   </div>
@@ -196,6 +224,7 @@ function getUav(ns, idx) {
     createCard(uavs[ns]); createMesh(uavs[ns]);
     refreshRecTopics();
     document.getElementById('empty')?.remove();
+    if (!selectedNs) selectUav(ns);   // 首架上线飞机默认选中（指点飞行目标）
   }
   return uavs[ns];
 }
@@ -245,7 +274,7 @@ const MAV_CMDS = {
   hold:    { command: 17 },   // NAV_LOITER_UNLIM -> 切 Hold
 };
 const FENCE_ACTION_NAMES = { hold: '悬停', land: '降落', rtl: '返航' };
-const ACTION_NAMES = { arm: '解锁', disarm: '上锁', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停' };
+const ACTION_NAMES = { arm: '解锁', disarm: '上锁', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停', goto: '指点飞行' };
 const cmdTopics = {};
 
 // ---------- 可靠通道（按钮） ----------
@@ -260,11 +289,11 @@ new ROSLIB.Topic({ ros, name: '/web_control/result', messageType: 'std_msgs/msg/
 let cmdSeq = 0;
 const pendingCmds = {};   // id -> { desc, btns: Set, timer }
 
-function sendCmd(u, action, btn) {
+function sendCmd(u, action, btn, extra) {
   const id = ++cmdSeq;
-  const payload = { id, ns: u.ns, action };
+  const payload = { id, ns: u.ns, action, ...(extra || {}) };
   if (action === 'takeoff') payload.alt = parseFloat(document.getElementById('takeoff-alt').value) || 1.5;
-  const p = { desc: `${u.ns} ${ACTION_NAMES[action] || action}`, btns: new Set(), timer: null };
+  const p = { desc: `${u.ns} ${ACTION_NAMES[action] || action}`, btns: new Set(), timer: null, marker: null };
   if (btn) { p.btns.add(btn); btn.disabled = true; }
   p.timer = setTimeout(() => finishCmd({ id, ok: false, msg: '后端无响应（web_control_node 未运行？）' }), 60000);
   pendingCmds[id] = p;
@@ -279,6 +308,7 @@ function finishCmd(r) {
   clearTimeout(p.timer);
   delete pendingCmds[r.id];
   p.btns.forEach((b) => { b.disabled = false; });
+  if (p.marker) { scene.remove(p.marker); p.marker = null; }   // 指点飞行目标标记
   showToast(`${p.desc}${r.ok ? ' 成功 ✔' : ' 失败: ' + r.msg}`, r.ok);
 }
 
@@ -317,7 +347,15 @@ function publishCmd(u, def) {
 }
 
 // 卡片按钮（事件委托）
+let selectedNs = null;   // 指点飞行的目标飞机（点击卡片选择）
+function selectUav(ns) {
+  selectedNs = ns;
+  document.querySelectorAll('.card.selected').forEach((c) => c.classList.remove('selected'));
+  uavs[ns]?.card.classList.add('selected');
+}
 sidebar.addEventListener('click', (e) => {
+  const card = e.target.closest('.card');
+  if (card && uavs[card.dataset.ns]) selectUav(card.dataset.ns);
   const btn = e.target.closest('button[data-a]');
   if (!btn) return;
   const u = uavs[btn.closest('.card')?.dataset.ns];
@@ -412,8 +450,36 @@ function recStatusHandler(m) {
       : (st.dir ? `未在记录\n最近 bag: ${st.dir} (${st.size_mb} MB)` : '未在记录');
     document.getElementById('rec-start').disabled = st.recording;
     document.getElementById('rec-stop').disabled = !st.recording;
+    // 历史 bag 列表
+    const box = document.getElementById('rec-bags');
+    const bags = st.bags || [];
+    box.innerHTML = bags.length
+      ? bags.map((b) => `<div class="bag-row"><span class="bag-name">${b.name}</span><span>${b.mb} MB</span>` +
+          `<button class="bag-del" data-bag="${b.name}" title="删除">✕</button></div>`).join('')
+      : '<div style="color:#586069;font-size:12px">暂无记录</div>';
+    document.getElementById('rec-total').textContent =
+      st.total_mb > 0 ? `bags 目录总占用 ${st.total_mb} MB` + (st.total_mb > 20480 ? '（偏大，建议清理）' : '') : '';
   } catch (e) { /* 忽略非 JSON 状态 */ }
 }
+
+// 删除历史 bag（事件委托）
+document.getElementById('rec-bags').addEventListener('click', (e) => {
+  const btn = e.target.closest('.bag-del');
+  if (!btn) return;
+  if (!confirm(`确认删除 ${btn.dataset.bag}？删除后不可恢复`)) return;
+  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'delete', name: btn.dataset.bag }) }));
+});
+
+// 预设话题组合
+const REC_PRESET_STD = ['vehicle_status', 'vehicle_local_position', 'battery_status'];
+function recSetChecks(fn) {
+  document.querySelectorAll('#rec-topics input[type=checkbox]').forEach((c) => {
+    c.checked = fn(c.dataset.topic.split('/').pop());
+  });
+}
+document.getElementById('rec-preset-std').addEventListener('click', () => recSetChecks((t) => REC_PRESET_STD.includes(t)));
+document.getElementById('rec-preset-all').addEventListener('click', () => recSetChecks(() => true));
+document.getElementById('rec-preset-none').addEventListener('click', () => recSetChecks(() => false));
 
 function refreshRecTopics() {
   const box = document.getElementById('rec-topics');
@@ -428,7 +494,8 @@ function refreshRecTopics() {
 document.getElementById('rec-start').addEventListener('click', () => {
   const topics = [...document.querySelectorAll('#rec-topics input:checked')].map((c) => c.dataset.topic);
   if (!topics.length) { alert('请先勾选要记录的话题'); return; }
-  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'start', topics }) }));
+  const note = document.getElementById('rec-note').value.trim();
+  recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'start', topics, note }) }));
 });
 document.getElementById('rec-stop').addEventListener('click', () => {
   recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'stop' }) }));
@@ -476,6 +543,58 @@ renderer.domElement.addEventListener('wheel', (e) => {
   camDist = Math.min(100, Math.max(3, camDist * (1 + e.deltaY * 0.001)));
 });
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// ============================== 指点飞行 ==============================
+// 打开"指点飞行"后单击 3D 地面：射线与等高水平面求交得到 ENU 目标点，
+// 换算到选中飞机的本地系后经 web_control_node 执行 Drone.goto()。
+const gotoToggle = document.getElementById('goto-toggle');
+let gotoMode = false;
+gotoToggle.addEventListener('click', () => {
+  gotoMode = !gotoMode;
+  gotoToggle.classList.toggle('on', gotoMode);
+  container.classList.toggle('goto-mode', gotoMode);
+  showToast(gotoMode ? '指点飞行已开启：点击卡片选飞机，再单击地面' : '指点飞行已关闭', gotoMode);
+});
+
+const raycaster = new THREE.Raycaster();
+let gotoDown = null;
+renderer.domElement.addEventListener('mousedown', (e) => { gotoDown = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener('mouseup', (e) => {
+  if (!gotoMode || !gotoDown) return;
+  const moved = Math.hypot(e.clientX - gotoDown.x, e.clientY - gotoDown.y);
+  gotoDown = null;
+  if (moved > 5 || e.button !== 0) return;   // 拖拽旋转视角不算点击
+  const u = selectedNs && uavs[selectedNs];
+  if (!u || !u.pos || Date.now() - u.lastSeen > 3000) { showToast('请先点击卡片选择一架在线飞机', false); return; }
+  if (!u.status || u.status.arming_state !== 2) { showToast(`${u.ns} 未起飞（指点飞行需先起飞）`, false); return; }
+  // 目标高度 = 该机当前高度（等高水平指点），平面求交也用这个高度
+  const h = Math.max(0.5, -u.pos.z);
+  const rect = renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1,
+                                -((e.clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const { origin, direction } = raycaster.ray;
+  if (Math.abs(direction.y) < 1e-6) return;
+  const t = (h - origin.y) / direction.y;    // three.js 里 y 是高度
+  if (t <= 0) return;
+  const p = origin.clone().add(direction.clone().multiplyScalar(t));
+  // ned2three(n,e,d)=(e,-d,-n) 的逆变换：共享 NED = (n=-p.z, e=p.x)
+  const shared = { n: -p.z, e: p.x };
+  if (Math.hypot(shared.n, shared.e) > FENCE_R) { showToast(`目标点在围栏外（R=${FENCE_R}m），已拒绝`, false); return; }
+  // 共享 NED -> 该机本地系：偏移 = 当前共享坐标 - 当前本地坐标（GPS 模式各机原点不同）
+  const ne = uavNe(u);
+  const localN = shared.n - (ne.n - u.pos.x);   // 目标在该机本地系的北向分量
+  const localE = shared.e - (ne.e - u.pos.y);   // 东向分量
+  // Drone.goto 是 ENU：x=东, y=北（别按 NED 顺序传，会飞错方向）
+  const id = sendCmd(u, 'goto', null, { x: +localE.toFixed(2), y: +localN.toFixed(2), z: +h.toFixed(2) });
+  // 目标标记（金色圆锥，完成/失败/超时后自动移除）
+  const marker = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.8, 12),
+                                new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.9 }));
+  marker.rotation.x = Math.PI;   // 尖端朝下指向目标点
+  marker.position.set(p.x, h + 0.4, p.z);
+  scene.add(marker);
+  pendingCmds[id].marker = marker;
+});
 
 // 地面网格与坐标轴 (NED: three.x=东, three.y=上, three.z=-北)
 scene.add(new THREE.GridHelper(20, 20, 0x30363d, 0x21262d));
