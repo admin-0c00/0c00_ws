@@ -542,7 +542,16 @@ function recStatusHandler(m) {
 
 // ============================== 数据页（分析与回放） ==============================
 let lastExportToast = null;
+let dataPageSig = '';
 function renderDataPage(st) {
+  // 内容没变不重渲染：1Hz 状态刷新会重建卡片 HTML，把刚点开的下拉框销毁（实测 bug）
+  const sig = JSON.stringify([
+    (st.bags || []).map((b) => [b.name, b.dur, b.msgs, b.note, (b.topics || []).length]),
+    st.playing, st.playing_name, st.exporting,
+    st.last_export && st.last_export.ok ? st.last_export.name : null,
+  ]);
+  if (sig === dataPageSig) return;
+  dataPageSig = sig;
   // 导出完成时提示一次
   if (st.last_export && st.last_export.ok) {
     const key = st.last_export.name + st.last_export.zip;
@@ -602,7 +611,7 @@ document.getElementById('data-bags').addEventListener('click', (e) => {
 });
 
 // ============================== 数据曲线（uPlot，离线库） ==============================
-let chartData = null, chartObj = null;
+let chartData = null, chartObj = null, chartTimer = null;
 
 function viewSeries(bagName, topic) {
   document.getElementById('chart-panel').style.display = 'block';
@@ -610,6 +619,12 @@ function viewSeries(bagName, topic) {
   document.getElementById('chart-fields').innerHTML = '';
   if (chartObj) { chartObj.destroy(); chartObj = null; }
   document.getElementById('chart-plot').innerHTML = '';
+  clearTimeout(chartTimer);
+  // 超时兜底：结果没到不能永远显示"加载中"（旧缓存页面收不到结果时尤其重要）
+  chartTimer = setTimeout(() => {
+    document.getElementById('chart-title').textContent = '加载超时：请 Ctrl+F5 刷新页面后重试';
+    showToast('曲线加载超时——页面可能是旧缓存，请 Ctrl+F5', false);
+  }, 15000);
   recConfigTopic.publish(new ROSLIB.Message({ data: JSON.stringify({ action: 'series', name: bagName, topic }) }));
 }
 
@@ -619,6 +634,7 @@ document.getElementById('chart-close').addEventListener('click', () => {
 
 function seriesHandler(m) {
   let d; try { d = JSON.parse(m.data); } catch { return; }
+  clearTimeout(chartTimer);
   if (!d.ok) {
     document.getElementById('chart-title').textContent = `加载失败: ${d.msg}`;
     showToast(`曲线读取失败: ${d.msg}`, false);
