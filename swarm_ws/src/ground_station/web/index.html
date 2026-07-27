@@ -712,6 +712,7 @@ function drawChart() {
   chartObj = new uPlot({
     width: el.clientWidth || 900, height: el.clientHeight || 420,
     scales: { x: { time: false } },
+    cursor: { drag: { x: false, y: false } },   // 关闭框选缩放，左键让给平移
     series: [{ label: 't(s)' }].concat(
       checked.map((f, i) => ({ label: f, stroke: CHART_COLS[i % CHART_COLS.length], width: 1 }))),
     axes: [
@@ -719,6 +720,53 @@ function drawChart() {
       { stroke: '#8b949e', grid: { stroke: '#21262d' }, ticks: { stroke: '#30363d' } },
     ],
   }, [chartData.rel].concat(checked.map((f) => chartData.series[f])), el);
+  bindChartNav(chartObj);
+}
+
+// 图表交互：滚轮缩放（以鼠标位置为中心）、左键拖拽平移、双击复位
+function bindChartNav(u) {
+  const over = u.over;
+  const xs = chartData.rel;
+  const x0 = xs[0], x1 = xs[xs.length - 1];
+  const full = x1 - x0 || 1;
+  const clamp = (mn, mx) => {
+    const r = mx - mn, c = (mn + mx) / 2;
+    if (r < full / 500) return [c - full / 1000, c + full / 1000];
+    if (r > full * 2) return [x0 - full / 2, x1 + full / 2];
+    return [mn, mx];
+  };
+  over.style.cursor = 'grab';
+  over.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const { min, max } = u.scales.x;
+    const range = max - min;
+    const factor = e.deltaY < 0 ? 0.8 : 1.25;
+    const rect = over.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+    const cx = min + range * f;
+    const [nmin, nmax] = clamp(cx - (cx - min) * factor, cx + (max - cx) * factor);
+    u.setScale('x', { min: nmin, max: nmax });
+  }, { passive: false });
+  over.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    over.style.cursor = 'grabbing';
+    const startX = e.clientX;
+    const { min, max } = u.scales.x;
+    const range = max - min;
+    const move = (ev) => {
+      const dx = (ev.clientX - startX) / over.clientWidth * range;
+      u.setScale('x', { min: min - dx, max: max - dx });
+    };
+    const up = () => {
+      over.style.cursor = 'grab';
+      over.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    over.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+  over.addEventListener('dblclick', () => u.setScale('x', { min: x0, max: x1 }));
 }
 
 // 删除历史 bag（事件委托）
