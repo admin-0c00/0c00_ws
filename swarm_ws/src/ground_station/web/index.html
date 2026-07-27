@@ -998,7 +998,7 @@ function makeLabel(text, cssColor) {
 
 // ---- 真机模型（雀）：自烘焙 base64 网格（que_model.json），无 GLTFLoader 依赖 ----
 // three r160 已删除非模块 GLTFLoader，自定义格式 + 下面的 30 行解析最省心。
-const QUE_SCALE = 3.0;   // 真机仅 0.23m 宽，3D 图里放大 3 倍便于观察
+const QUE_SCALE = 1.0;   // 真机真实尺寸（0.23m），不放大
 let queModel = null;     // {body, ccw, cw, rotor_pos, prop_kind}
 
 function buildQueMesh(u) {
@@ -1031,7 +1031,7 @@ fetch('que_model.json').then((r) => r.json()).then((jm) => {
     geo.setAttribute('position', new THREE.BufferAttribute(dec(g.pos, Float32Array), 3));
     geo.setAttribute('normal', new THREE.BufferAttribute(dec(g.nrm, Float32Array), 3));
     geo.setAttribute('color', new THREE.BufferAttribute(dec(g.col, Float32Array), 3));
-    geo.setIndex(new THREE.BufferAttribute(dec(g.idx, Uint32Array), 1));
+    if (g.idx) geo.setIndex(new THREE.BufferAttribute(dec(g.idx, Uint32Array), 1));
     return geo;
   };
   queModel = { body: geom(jm.body), ccw: geom(jm.prop_ccw), cw: geom(jm.prop_cw),

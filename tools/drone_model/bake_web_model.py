@@ -59,9 +59,13 @@ def to_frd_m(v):
 
 
 def mesh_json(m):
-    return {"pos": b64f(m.vertices), "nrm": b64f(m.vertex_normals),
-            "col": b64f(m.visual.vertex_colors[:, :3] / 255.0),
-            "idx": b64i(m.faces)}
+    # 非索引平直着色：展开成三角形 soup，法线=面法线。
+    # 平滑顶点色法线在硬边 CAD 上会产生"肿块"伪影、小孔细节糊掉（实测反馈），
+    # 平直着色棱角分明，安装孔清晰可见。
+    tri = m.triangles.reshape(-1, 3)
+    nrm = np.repeat(m.face_normals, 3, axis=0)
+    col = np.repeat(m.visual.face_colors[:, :3] / 255.0, 3, axis=0)
+    return {"pos": b64f(tri), "nrm": b64f(nrm), "col": b64f(col), "idx": ""}
 
 
 def colorize(m, rgb):
@@ -73,7 +77,7 @@ def colorize(m, rgb):
 def main():
     body_parts, props = [], {}
     for name, shape in load_step(os.path.join(HERE, "雀_NX.stp")):
-        export_stl(shape, "/tmp/bake_tmp.stl", 0.3)
+        export_stl(shape, "/tmp/bake_tmp.stl", 0.15)
         m = trimesh.load("/tmp/bake_tmp.stl")
         m.vertices = to_frd_m(m.vertices)
         if name in ("DT90", "DT90_ccw"):
