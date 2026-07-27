@@ -83,6 +83,7 @@
   <span id="conn-text">连接 rosbridge...</span>
   <div id="global-ctl">
     <button class="gbtn" id="goto-toggle" title="打开后单击 3D 地面，选中的飞机即飞向该点">指点飞行</button>
+    <button class="gbtn" id="trail-clear" title="清除所有飞机的飞行轨迹">清除轨迹</button>
     <button class="gbtn" data-cmd="takeoff">全部起飞</button>
     <button class="gbtn" data-cmd="rtl">全部返航</button>
     <button class="gbtn" data-cmd="land">全部降落</button>
@@ -430,8 +431,10 @@ const tabBtns = { status: document.getElementById('tab-btn-status'), record: doc
 function switchTab(name) {
   tabBtns.status.classList.toggle('active', name === 'status');
   tabBtns.record.classList.toggle('active', name === 'record');
-  document.getElementById('tab-status').style.display = name === 'status' ? '' : 'none';
-  document.getElementById('tab-record').style.display = name === 'record' ? '' : 'none';
+  // 注意：不能用 '' 清空 display——#tab-record 的样式表规则是 display:none，
+  // 清掉内联样式会回落到 none，记录页永远显示不出来（历史 bug）
+  document.getElementById('tab-status').style.display = name === 'status' ? 'block' : 'none';
+  document.getElementById('tab-record').style.display = name === 'record' ? 'block' : 'none';
 }
 tabBtns.status.addEventListener('click', () => switchTab('status'));
 tabBtns.record.addEventListener('click', () => switchTab('record'));
@@ -557,6 +560,17 @@ gotoToggle.addEventListener('click', () => {
 });
 
 const raycaster = new THREE.Raycaster();
+// 一键清除全部飞行轨迹（不清除飞机与状态，仅清轨迹线）
+document.getElementById('trail-clear').addEventListener('click', () => {
+  for (const u of Object.values(uavs)) {
+    u.trailPts = [];
+    if (u.trailGeom) {
+      u.trailGeom.setDrawRange(0, 0);
+      u.trailGeom.attributes.position.needsUpdate = true;
+    }
+  }
+  showToast('飞行轨迹已清除', true);
+});
 let gotoDown = null;
 renderer.domElement.addEventListener('mousedown', (e) => { gotoDown = { x: e.clientX, y: e.clientY }; });
 renderer.domElement.addEventListener('mouseup', (e) => {

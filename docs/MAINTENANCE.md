@@ -82,3 +82,7 @@
 - 现有 6 个包：bringup、swarm_api、ground_station、swarm_msgs（TargetMap/TaskAssignment）、px4_msgs、px4_ros_com。px4_bridge 职责已由 swarm_api + web_control_node 实际承担。
 - README 目录结构、NOTICE 自研代码清单同步修订。
 - **顺带抓到框架级 bug**：takeoff 失败（如 preflight 未过）后设定点流不会停止，残留的 20Hz 流会一直干扰 PX4 后续返航/降落（飞机悬着落不下来）。已修：takeoff 失败先停流再抛错。回归通过。
+## 2026-07-27 记录页空白根治 + 清除轨迹按钮
+
+- **记录页从上线起就一直空白**：switchTab 用 `style.display=''` 显示面板，但 #tab-record 样式表规则是 display:none，清内联样式后回落为 none——两张面板同时隐藏。status 页没有 CSS display 规则所以正常，掩盖了 bug。修为显式 'block'/'none'。
+- 顶栏新增"清除轨迹"按钮：一键清空所有飞机轨迹线（drawRange 归零），不用刷新页面。
