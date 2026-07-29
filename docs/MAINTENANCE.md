@@ -3,6 +3,19 @@
 > 记录每次重要更新的内容与原因，供维护者快速回溯。只记关键变更，细节以 git log 为准。
 > 工作流：在 `~/0c00_ws`（开发主工作区）修改验证 → 同步进 `SwarmCore-Sim`（发行仓库）→ 推送 Gitee + 内网 Gitea。
 
+## 2026-07-29 开源协议变更：Apache-2.0 → GPL/LGPL/CC BY-NC 分层
+
+- **背景**：依《开源成果保护策略》（V1.0）执行——宽松协议等于邀请竞品闭源白嫖，改用 copyleft 分层保护核心代码，同时保住高校用户的集成自由度。
+- **核心软件栈 → GPL v3**：bringup、ground_station、swarm_msgs、install.sh、tools/。根目录 `LICENSE` 替换为 GPL v3 全文。衍生作品分发时必须开源，防止闭源抄袭反向竞争；GPL v3 自带专利授权+反制与反 Tivoization 条款。
+- **SDK/接口层 → LGPL v3**：swarm_api 单独适用 LGPL v3（`swarm_ws/src/swarm_api/LICENSE`）——用户 import 写科研代码不受传染，只有改 swarm_api 本身才需开源。修掉 setup.py 误写 BSD-3-Clause 与 package.xml 不一致的问题。
+- **文档 → CC BY-NC 4.0**：`docs/LICENSE` 新增；教学自由转载，商业培训盗用必究。
+- **NOTICE 重写**：分层协议映射表 + 商标声明 + 第三方组件清单 + 历史版本说明（旧版 Apache-2.0 不可撤销，变更只约束新版本）+ 贡献者条款（保留双许可权利）。
+- **package.xml 更新**：bringup/ground_station/swarm_msgs → `GPL-3.0-only`，swarm_api → `LGPL-3.0-only`；px4_msgs/px4_ros_com 保留 BSD 不动。
+- `docs/OPEN_SOURCE_LICENSE.md` 重写为 v2.0（分层导读、使用 vs 衍生的传染边界、双许可变现路径）；README 开源协议一节同步更新。
+- 第三方组件（PX4 BSD-3 / XRCE-DDS Apache-2.0 / ROS 2 / Gazebo）与 GPL/LGPL 共同分发与链接无许可证冲突。
+- **CLA 落地**：新增 `docs/CLA.md`（贡献者许可协议 v1.0：著作权+专利许可、双许可/再许可权利、职务作品声明、PR 提交即视为签署）；NOTICE 第五节与 OPEN_SOURCE_LICENSE.md 第 8 节改为引用 CLA。
+- **源码头部声明**：31 个自研源文件批量插入 SPDX 头部（swarm_api 为 LGPL-3.0-only，其余 GPL-3.0-only；shebang/DOCTYPE 保持在首行）；第三方前端库（web/lib 的 three/roslib/uPlot）与 PX4 系文件不动。插入后 Python 编译与 shell 语法校验全部通过。
+
 ## 2026-07-26 安装与发行链路修复
 
 - **install.sh 两处致命修复**：

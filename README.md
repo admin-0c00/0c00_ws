@@ -142,11 +142,14 @@ python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_swarm_square.py  # 三机（
 
 ## 开源协议
 
-本仓库自研代码以 **Apache License 2.0** 开源（见 `LICENSE`），第三方组件（PX4、Micro-XRCE-DDS-Agent、px4_msgs 等）保留其各自许可证（见 `NOTICE`）。
+本仓库采用**分层开源**策略（详见 `NOTICE` 与中文导读 `docs/OPEN_SOURCE_LICENSE.md`）：
 
-"灵簇"、"SwarmCore" 为我司商标（申请注册中），Apache-2.0 不授予商标使用权——可自由使用代码，但衍生作品不得以 "SwarmCore"/"灵簇" 命名。
+- **核心代码**（bringup、ground_station、swarm_msgs、install.sh 等）：**GPL v3**（见 `LICENSE`）——衍生作品分发时必须开源，防止闭源白嫖；
+- **SDK/接口层**（swarm_api 集群控制框架）：**LGPL v3**（见 `swarm_ws/src/swarm_api/LICENSE`）——你的科研代码 import swarm_api 不受传染，只有改动 swarm_api 本身才需开源；
+- **文档**（`docs/` 及官网课程）：**CC BY-NC 4.0**——教学自由转载，商业盗用必究；
+- **第三方组件**（PX4、Micro-XRCE-DDS-Agent、px4_msgs 等）：保留其各自许可证（见 `NOTICE`）。
 
-中文导读见 `docs/OPEN_SOURCE_LICENSE.md`。
+"灵簇"、"SwarmCore" 为我司商标（申请注册中），上述协议均不授予商标使用权——可依法使用代码，但衍生作品不得以 "SwarmCore"/"灵簇" 命名。
 
 ## 注意事项
 

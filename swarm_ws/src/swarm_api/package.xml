@@ -4,7 +4,7 @@
   <version>0.1.0</version>
   <description>SwarmCore 集群控制框架：多机并行的位置/速度控制 API（仿真与真机同构）</description>
   <maintainer email="dev@lcw.local">SwarmCore</maintainer>
-  <license>Apache-2.0</license>
+  <license>LGPL-3.0-only</license>
   <buildtool_depend>ament_python</buildtool_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>px4_msgs</exec_depend>

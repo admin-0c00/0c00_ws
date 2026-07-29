@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (C) 2026 零创无穷（成都）科技有限责任公司
+# 本文件是 SwarmCore-Sim 的一部分，
+# 依据 GNU GPL v3 发布（协议全文见仓库根目录 LICENSE）。
+# 本软件按"现状"提供，不附带任何明示或默示担保。
+
 """SwarmCore 集群起飞基线（产品定义书 M2：三机 SITL + Offboard 控制）
 
 对 /uav_1../uav_N 命名空间下的每架仿真无人机：

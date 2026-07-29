@@ -4,7 +4,7 @@
   <version>0.1.0</version>
   <description>SwarmCore Web 地面站：无人机状态监视（电量/位置/速度）+ 3D 地图（rosbridge + Three.js）</description>
   <maintainer email="dev@lcw.local">SwarmCore</maintainer>
-  <license>Apache-2.0</license>
+  <license>GPL-3.0-only</license>
 
   <exec_depend>rosbridge_server</exec_depend>
 
