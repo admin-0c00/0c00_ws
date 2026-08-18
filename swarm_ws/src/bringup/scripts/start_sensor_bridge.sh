@@ -7,9 +7,10 @@
 
 # SwarmCore 传感器桥接：把 Gazebo 相机/雷达话题桥到 ROS 2
 # 用法: start_sensor_bridge.sh [话题前缀=]
-#   默认桥接 gz_x500_depth（OakD-Lite）的话题：
+#   默认桥接深度相机机型（OakD-Lite 布局）的话题：
 #     /camera, /camera_info, /depth_camera, /depth_camera/points
-#   自定义机型加传感器后，按 gz topic -l 的实际话题名改下面 BRIDGES 即可。
+#   当前默认机型 gz_que 无相机；视觉机型接入后按 gz topic -l 的
+#   实际话题名改下面 BRIDGES 即可。
 #
 # 注意（实测踩过的坑）：
 #   - 点云的 Gazebo 类型是 PointCloudPacked，不是 PointCloud，写错桥会静默失败

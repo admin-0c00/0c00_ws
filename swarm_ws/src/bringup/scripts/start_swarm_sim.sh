@@ -6,9 +6,9 @@
 # 本软件按"现状"提供，不附带任何明示或默示担保。
 
 # SwarmCore 多机 SITL 一键启动（产品定义书 M2 仿真包）
-# 用法: start_swarm_sim.sh [无人机数量=3] [HEADLESS=1] [机型=gz_x500]
+# 用法: start_swarm_sim.sh [无人机数量=3] [HEADLESS=1] [机型=gz_que]
 # 每架无人机: 独立 PX4 实例, ROS 2 命名空间 /uav_<N>/fmu/..., 出生点 y 轴间隔 2m
-# 机型: gz_x500(默认) / gz_x500_depth(深度相机) / gz_x500_vision(双下视+前视) 等，
+# 机型: gz_que(默认，自有机型"雀") 等，
 #       需存在对应 ROMFS airframe 文件（ROMFS/px4fmu_common/init.d-posix/airframes/40xx_<机型>）。
 #       自有机型接入时同样放一个 airframe + gz/models/<模型目录> 即可在此直接用。
 set -u
@@ -20,8 +20,8 @@ if [ "${2:-1}" = "0" ]; then
 else
     export HEADLESS=1
 fi
-# 第 3 参数: 机型（PX4_SIM_MODEL），默认 gz_x500
-MODEL=${3:-gz_x500}
+# 第 3 参数: 机型（PX4_SIM_MODEL），默认 gz_que（自有机型"雀"）
+MODEL=${3:-gz_que}
 # 机型合法性预检：airframe 文件不存在时 PX4 会起不来，提前报错比翻日志友好
 PX4_DIR_CHECK="$HOME/0c00_ws/PX4-Autopilot"
 AIRFRAME_DIR="$PX4_DIR_CHECK/ROMFS/px4fmu_common/init.d-posix/airframes"

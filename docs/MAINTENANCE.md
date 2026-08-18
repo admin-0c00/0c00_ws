@@ -3,6 +3,28 @@
 > 记录每次重要更新的内容与原因，供维护者快速回溯。只记关键变更，细节以 git log 为准。
 > 工作流：在 `~/0c00_ws`（开发主工作区）修改验证 → 同步进 `SwarmCore-Sim`（发行仓库）→ 推送 Gitee + 内网 Gitea。
 
+## 2026-08-18 默认机型改为 gz_que，其他多旋翼全部移除
+
+- **背景**：仿真只保留自有机型"雀"（gz_que）+ 固定翼/垂起等特种机型，其余多旋翼（x500 系列、px4vision、omnicopter）全部删除。
+- `start_swarm_sim.sh` 第 3 参数默认值 gz_x500 → gz_que；不传机型即起飞雀。
+- **删除的 airframe（含 CMakeLists 条目）**：4001_gz_x500 / 4002_gz_x500_depth / 4005_gz_x500_vision / 4010_gz_x500_mono_cam / 4006_gz_px4vision / 8011_gz_omnicopter。x500 的 depth/vision/mono_cam 均 `.` 引用 4001，必须整体删。
+- **删除的 gz 模型目录**：x500 / x500_base / x500_depth / x500_mono_cam / x500_vision / px4vision / omnicopter。
+- **保留**：que（雀）；rc_cessna / advanced_plane（固定翼）、standard_vtol（垂起）——按需求保留特种机型；r1_rover / lawnmower（无人车，日后 ugv_bridge 可能用）；OakD-Lite / mono_cam（独立传感器模型，视觉机型接入仍可用）。
+- **排查确认无残留依赖**：rcS 按 PX4_SIM_MODEL 名匹配 airframe（无硬编码默认机型）；worlds 不引用模型；其余引用均为注释（que/model.sdf 两处注释已改写，GZMixingInterfaceESC.cpp 注释示例保留）。`gz/tests/test_model.py` 是上游"下载工具"测试，检查的是在线下载的模型包，与树内模型无关，未动。
+- **未动**：jmavsim / flightgear / sihsim 的 airframe（10017、1034/1062/17001/17002、10040-10042）——非本次清理范围，flightgear/sihsim 机型均为固定翼/垂起。
+- README 快速上手默认机型说明同步；start_sensor_bridge.sh 注释改为"视觉机型接入后按实际话题名配置"（雀无相机）。
+- 验证：`make px4_sitl_default` 重编后构建 ROMFS 的 gz airframe 只剩 4003/4004/4008/4009/4011/4012；`start_swarm_sim.sh 1 1`（默认机型）起飞雀，uav_1 话题流与 vehicle_status 正常，飞控日志 0 报错。
+
+## 2026-08-18 gazebo-classic 子树整树移除 + jsbsim 多旋翼清理（发行版瘦身 222MB）
+
+- **决策**：gazebo-classic（Gazebo 11 旧仿真器）本系统从未安装，整树为死代码，经确认整树移除。
+- **删除 `Tools/simulation/gazebo-classic/`（515 文件，~185MB）**：sitl_gazebo-classic 全部模型/世界/插件。安全性依据：`sitl_targets_gazebo-classic.cmake` 整块包在 `if(gazebo_FOUND)` 内，未装 classic 时配置期即跳过，删除子树不影响 `px4_sitl_default` 构建（已重编验证）；Makefile 中 `sitl_gazebo-classic` 仅被 rostest/tests_integration 等上游测试目标引用，本就不跑。
+- **删除 gazebo-classic 全部 35 个 airframe（1010-1070/2507/6011/10015-10030，含 .post）+ CMakeLists 条目**：classic 的固定翼/垂起/无人车一并删——gz Garden 下有对应机型（rc_cessna/advanced_plane/standard_vtol/r1_rover），不损失能力。
+- **删除 jsbsim 多旋翼**：airframe 3010_jsbsim_quadrotor_x / 3011_jsbsim_hexarotor_x + jsbsim_bridge/models 下 quadrotor_x / hexarotor_x 模型。jsbsim 固定翼（1033 rascal / 1036 malolo）保留。`sitl_targets_jsbsim.cmake` 在 `if(JSBSIM_INCLUDE_DIR)` 内，未装 JSBSim 不生效。
+- **保留**：10016_none_iris（simulator_mavlink CMakeLists 的 none_iris 目标引用）。
+- **瘦身合计（本次机型清理两轮）**：588 文件、222.2 MB（x500/px4vision/omnicopter 57 文件 35.5MB + 本轮 531 文件 ~186.7MB）。
+- 验证：重编通过（px4 重新链接），ROMFS airframe 余 17 个（gz 6 + jsbsim/flightgear/sihsim/jmavsim/none 11）；que 默认启动冒烟通过（43 个 uav_1 话题、vehicle_status 正常；日志仅启动期 Yaw estimate 收敛告警，属正常）。
+
 ## 2026-07-29 开源协议变更：Apache-2.0 → GPL/LGPL/CC BY-NC 分层
 
 - **背景**：依《开源成果保护策略》（V1.0）执行——宽松协议等于邀请竞品闭源白嫖，改用 copyleft 分层保护核心代码，同时保住高校用户的集成自由度。

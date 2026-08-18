@@ -57,7 +57,7 @@
           </mesh>
         </geometry>
       </collision>
-      <!-- 传感器三件套（与 x500 同款；PX4 gz 桥按名字订阅，缺了会 Preflight 缺传感器） -->
+      <!-- 传感器三件套（PX4 gz 桥按名字订阅，缺了会 Preflight 缺传感器） -->
       <sensor name="air_pressure_sensor" type="air_pressure">
         <always_on>1</always_on>
         <update_rate>50</update_rate>
@@ -92,7 +92,7 @@
         <navsat>
           <position_sensing>
             <vertical>
-              <!-- 垂直位置噪声置零（沿用集群 GPS 高度修复，见 x500_base 同款注释） -->
+              <!-- 垂直位置噪声置零（集群 GPS 高度修复：真机以光流定高，垂直噪声按 0 配） -->
               <noise type="gaussian">
                 <mean>0</mean>
                 <stddev>0</stddev>
