@@ -3,6 +3,13 @@
 > 记录每次重要更新的内容与原因，供维护者快速回溯。只记关键变更，细节以 git log 为准。
 > 工作流：在 `~/0c00_ws`（开发主工作区）修改验证 → 同步进 `SwarmCore-Sim`（发行仓库）→ 推送 Gitee + 内网 Gitea。
 
+## 2026-08-18 官网文档审查 + 修改稿（待负责人上传）
+
+- 通读官网 SwarmCore 专栏 5 篇（overview/quickstart-demo/swarm-api/api-reference/ground-station），问题分四类：事实性错误（HGT_REF 默认值写成 GPS、缺 EKF_RESTART 参数）、机型变更未同步（目录结构过时、截图是 x500、漂移表述过时）、API 文档缺 arm/disarm/rtl/nav_state 与 kill 命令、小瑕疵（波浪号丢失、行数不实、虚拟机专题丢失）。
+- 修改稿已写入 `docs/WEBSITE_DOC_FIXES_2026-08-18.md`（逐条"位置→原文→改为"，可直接照改），交负责人上传官网。截图/视频素材需用雀重录，已列入修改稿。
+- 教程命令均不带机型参数，默认机型改雀后原样可用，无需改命令。
+- GitHub 同步恢复：github.com 的 HTTP/2 被干扰导致 push 失败，仓库级 `git config http.version HTTP/1.1` 后稳定可推（此前"GitHub 暂停同步"的结论作废）；远程 `github` = admin-0c00/0c00_ws。
+
 ## 2026-08-18 默认机型改为 gz_que，其他多旋翼全部移除
 
 - **背景**：仿真只保留自有机型"雀"（gz_que）+ 固定翼/垂起等特种机型，其余多旋翼（x500 系列、px4vision、omnicopter）全部删除。
