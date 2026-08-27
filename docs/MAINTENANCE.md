@@ -3,6 +3,48 @@
 > 记录每次重要更新的内容与原因，供维护者快速回溯。只记关键变更，细节以 git log 为准。
 > 工作流：在 `~/0c00_ws`（开发主工作区）修改验证 → 同步进 `SwarmCore-Sim`（发行仓库）→ 推送 Gitee + 内网 Gitea。
 
+## 2026-08-27 MicoAir743 板型移植 + 空循环 UWB（LinkTrack）驱动
+
+- **角色扩展**：本工作区同时承担 PX4 真机固件维护（飞控：微空科技 MicoAir743 / MicoAir743-V2）。
+- **板型移植**：v1.15.4 树内无 micoair 板型，从上游 PX4 v1.16.0 拉取 `boards/micoair/h743`、`boards/micoair/h743-v2` 全部 48 个文件，零修改通过编译。两个板型均产出 `.px4` 固件包。
+- **拍平仓库连环缺文件（又两例，同类问题第三、四起）**：
+  1. `pydronecan` 的 `dronecan/dsdl/` 子包整个被吞（libuavcan DSDL 编译器报 `No module named 'dronecan.dsdl'`）——按 libuavcan 锁定的 pydronecan 提交 `7aed0a97` 补齐 5 个文件；
+  2. NuttX 树下所有 `bin/` 目录被根 .gitignore 的 `bin/` 规则吞掉（libc/libnx/mm 的 bin/Makefile 缺失，报 `can't create bin/arch_memcpy.o`）——按 NuttX 锁定提交 `5d74bc1` 全树比对 16784 个文件，共缺 7 个，全部补齐。**教训：以后排查编译缺文件，先用上游 tree 全量比对，别一个个撞。**
+- **NuttX 版本头修复**：`px_update_git_header.py` 只在 NuttX 有自己的 .git 时才定义 `NUTTX_GIT_TAG_STR`，拍平树编译真机固件直接报错。仿照已有的 mavlink 快照兜底分支补 NuttX 分支（v1.15.4 锁定 PX4/NuttX 5d74bc1，基于 nuttx-11.0.0，取值 "v11.0.0"）。
+- **新驱动 `src/drivers/uwb/linktrack/`**：空循环（Nooploop）LinkTrack UWB 模块接入。解析 NLink 二进制协议 tagframe0（0x55 帧头 + 功能码 0x01，定长 128 字节，uint8 累加和校验；位置 int24÷1000 m、速度 int24÷10000 m/s、EOP 位置误差估计、电压），输出 `vehicle_visual_odometry` 供 EKF2 外部视觉融合。检测到 ASCII `$` 流会提示模块处于 NMEA 模式需切回 LinkTrack 协议。
+- **协议解析交叉验证**：构造合成帧，与 Nooploop 官方 nlink_unpack 代码（nooploop-dev/nlink_unpack，注意其嵌套 submodule）同输入比对，位置/速度/id/电压完全一致。
+- **参数与集成**：`LT_PORT_CFG`（module.yaml serial_config，QGC 选口自启动，与 gps 同机制）、`LT_TF_ROT`（锚点系→NED 映射，默认 ENU→NED）、`LT_COV_POS`/`LT_COV_VEL`。两个板型 px4board 加 `CONFIG_COMMON_UWB=y` + `CONFIG_DRIVERS_UWB_LINKTRACK=y`。
+- **EKF2 真机配置**（SOP 用）：`EKF2_EV_CTRL` 开位置+速度、`EKF2_HGT_REF`=Vision、室内 `EKF2_GPS_CTRL`=0。v1.15 的 EKF2 EV 订阅 `vehicle_visual_odometry`（EKF2.hpp:328），驱动输出即此话题。
+- **踩坑记录（本驱动相关）**：① ModuleBase 的主循环函数是小写 `virtual void run()`（大写 Run 是 ScheduledWorkItem 的），且必须 public；② run_trampoline 会调 exit_and_cleanup，模块内不要再调；③ module.yaml 的 type/default 等键与 description 同级，缩进错会被 generate_params.py 报 KeyError: 'type'；④ param_get 要 int32_t*。
+- **工具链**：arm-none-eabi-gcc 9-2020-q2-update 装在 `tools/toolchain/`（免 sudo，不入库），编译时 PATH 前置即可。
+- **待真机验证**：驱动台架实测（接线/波特率 921600/数据检查/EKF2 融合）需硬件在手后按 SOP 执行。
+
+## 2026-08-27 真机（雀）DDS 接入地面站链路
+
+- **链路设计**：飞控 TELEM2 → CH9121 端口2（UDP Server :8888，921600 8N1）→ 地面电脑 PTY → MicroXRCEAgent(serial) → ROS 2 `/uav_N/fmu/*` → 地面站。端口1 的 MAVLink→QGC（:14550）不动，两路独立。
+- **新增脚本**（swarm_ws/src/bringup/scripts/）：`udp_serial_bridge.py`（纯标准库 UDP↔PTY 字节流桥，PTY raw 模式）+ `start_real_uav.sh [N] [IP] [端口]`。开发机无 socat 且项目零依赖惯例，故桥自写，已做本地回环验证（PTY↔UDP 字节级一致）+ Agent 开 PTY 验证。
+- **为什么是 serial 传输不是 udp4**：PX4 走 UART 的 XRCE 是 serial 帧（HDLC 风格带 CRC），CH9121 是透传桥不改变帧格式，Agent 必须用 serial 传输 + PTY，不能用 udp4。
+- **飞控侧要点**：`UXRCE_DDS_CFG`=TELEM2、`SER_TEL2_BAUD`=921600；命名空间只能 CLI `-n` 传（module.yaml 的自动启动不带），需 SD 卡 `etc/extras.txt` 重启 client 带 `-n uav_N`；**MAV_SYS_ID 必须等于 N**（swarm_api 从命名空间尾数推 sysid）。
+- **串口映射坑**：雀的飞控是 MicoAir H743 **v1**，TELEM2=**/dev/ttyS1**；工作区源码里的 h743-**v2** 板 TEL2=/dev/ttyS3，按 v2 推的路径导致初期完全无数据。换板子/查映射以真机 `ver all` 的 HW arch 为准，别照抄源码里另一版本的 default.px4board。
+- **UDP Server 死锁与敲门机制**：CH9121 UDP Server 要先收到本网来的包才把串口数据转发过来（锁定对端），而 Agent 收到 client 首帧前不发数据——互不先开口死锁。桥的解法：收到首个 UDP 包前每秒发一行 `~KNOCK\n`（XRCE 按 CRC 丢弃，无害；可见 ASCII 还方便在飞控端 cat 串口验证方向）。
+- **验证状态（真机已全链路打通）**：MicoAir H743 v1（PX4 1.15.2）+ 工作区 v1.15.4+64 的 px4_msgs 兼容。2026-08-27 实测：client(-n uav_1, ttyS1@921600) connected、timesync 收敛、13 路 writer 建立；`ros2 topic echo /uav_1/fmu/out/vehicle_status` 正常出数；QGC(14550) 与地面站(8888) 同时在链互不干扰。**待办**：extras.txt 固化到 SD 卡（设备路径用 /dev/ttyS1），否则飞控重启后命名空间丢失。
+- **extras.txt 固化完成 + 两处加固**（2026-08-27 晚）：① extras.txt 已写入 SD 卡生效（坑：用编辑器手抄时第一行末尾混入一个 `|` 管道符，nsh 解析失败导致脚本没执行——文件务必用 `echo "..." >` 写入或 cat 逐字符核对）；② 桥改**看门狗敲门**（>2s 无 UDP 包即恢复 1Hz 敲门）——CH9121 重启/掉电会丢对端锁定，原"首次后停敲"在模块重启后死锁，看门狗版实现了飞控侧零干预自愈；③ Agent 启动加 nohup（曾无声息死过一次，疑 SIGHUP）。
+- **1.15.4 本地固件已烧录 + 消息体检**（2026-08-27 晚）：固件 = 工作区 HEAD(0ed5f82c) + 上游 v1.16.0 移植的 boards/micoair/h743（v1，TEL2=ttyS1 与 extras.txt 一致）。23 个 dds_topics 实测：11 个常流话题全部正常（姿态/本地位置 ~100Hz、四元数模长 1.0、z_valid=true）；事件型话题（arming_check_request/vehicle_command_ack 等 7 个）静默属正常；**待查 3 项**：vehicle_gps_position 无数据（室内/驱动/参数待 QGC 卫星数核对）、battery voltage 0.07V+current_avg 15A 异常（核对 QGC 电量显示与 v1 板 ADC 配置）、vehicle_angular_velocity 静默（地面站不用，飞行时复查）。**注意 `ros2 topic echo` 对无订阅者的话题必须显式带类型**（vehicle_gps_position 的类型是 px4_msgs/msg/SensorGps，不是望文生义的 VehicleGpsPosition）。
+- **运维口诀**：地面端 Agent 重启后飞控 client 要跟着重启（旧会话僵死报 connected 假象）；排查顺序 = ps 看 Agent 活着没 → agent.log 有无 session → echo 话题。
+
+## 2026-08-27 新增通信模块配置工具（tools/comm_module_config）
+
+- **背景**：CH9121 串口转以太网模块的官方配置工具 NetModuleConfig.exe 只有 Windows 版，内网开发机是 Linux，需要一个替代工具。（原名 CH9121 Web 配置工具 / tools/ch9121_config，应要求改为现名；协议层 ch9121.py 文件名保留——报文格式是芯片专有的，名字改掉影响可维护性。）
+- **实现**：纯 Python 标准库（零依赖）+ 单页 Web UI。`ch9121.py` 协议层（UDP 广播：模块 50000 / 本机 60000，285 字节定长报文，搜索 04/读 02/写 01/恢复出厂 03）；`server.py` HTTP+JSON API（8081 端口，含网卡枚举 ioctl）；`web/index.html` 暗色卡片式单页（无 CDN，离线可用）。
+- **协议要点**：配置数据区 204B = HWCfg(74B) + PortCfg[2](65B×2)；**PortCfg[0]=端口2、PortCfg[1]=端口1**；16 位端口大端、32 位波特率/打包长度小端。写配置采用"先读后写"——reserved 字段（WEB 端口、密码、固件标志等）原样回写，避免清掉未公开字段。
+- **多网卡**：页面强制选网卡，socket 绑定全网卡（`''`）+ 定向广播/255.255.255.255 双发——**踩坑：绑定到具体网卡 IP 的 UDP socket 收不到广播应答包**（模块在线 ping 通但搜索无应答的根因）；发包走哪张网卡由目的地址（定向广播）决定而非 bind。
+- **搜索应答解析**：设备名是变长的（len 只数到名的 null 为止），固件版本字节在 len 计数**之外**——按"IP[4] + 名到 null + 其后 1 字节版本"解析，不能按定长 8 字节名偏移。
+- **字节序实测校正**：配置结构体多字节参数**全部小端**（16 位端口也是小端！协议文档示例 "b8 0b=3000" 即 0x0BB8 小端。初版按大端解析出 54840 这类怪值，小端读为 8889/8890/14550 才是正常端口）。
+- **验证状态（真机已验证）**：模块 e4:66:e5:91:2f:26 @ 192.168.10.100（固件 v42）。搜索/读配置/写配置（rx_pack_timeout 0→5→0 读回环）/HTTP API 全链路通过。恢复出厂未测（破坏性，留用户手动）。
+- 另注意：调试时 `pkill -f "server.py"` 会匹配到外层 bash 自身的命令行导致自杀，杀进程用 `ss -tlnp` 找 PID。
+- 根 README 目录结构补 tools/ 一节。
+- 后续修复：UI"读取参数/写入配置"按钮栏（#actionsBar）误置于默认隐藏的 #form 容器内，选中设备后按钮不可见——已将按钮栏移出 #form 并由 showForm() 独立控制显隐；README 增补 HTTP API 契约小节（5 个接口）。
+
 ## 2026-08-18 官网文档审查 + 修改稿（待负责人上传）
 
 - 通读官网 SwarmCore 专栏 5 篇（overview/quickstart-demo/swarm-api/api-reference/ground-station），问题分四类：事实性错误（HGT_REF 默认值写成 GPS、缺 EKF_RESTART 参数）、机型变更未同步（目录结构过时、截图是 x500、漂移表述过时）、API 文档缺 arm/disarm/rtl/nav_state 与 kill 命令、小瑕疵（波浪号丢失、行数不实、虚拟机专题丢失）。

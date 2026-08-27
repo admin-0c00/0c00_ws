@@ -127,12 +127,15 @@ python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_swarm_square.py  # 三机（
 ├── install.sh                # 一键安装脚本
 ├── PX4-Autopilot/            # PX4 v1.15.4（子模块已拍平，tag v1.15.4 保留供版本检测）
 ├── Micro-XRCE-DDS-Agent/     # DDS 桥源码
-└── swarm_ws/src/             # ROS 2 功能包
-    ├── bringup/              # 仿真启停脚本、起飞脚本、demo 示例
-    ├── swarm_api/            # 集群控制框架（Drone/Swarm/Strategy，Python）
-    ├── ground_station/       # Web 地面站（rosbridge + Three.js）
-    ├── swarm_msgs/           # 自定义消息（TargetMap / TaskAssignment）
-    └── px4_msgs/ px4_ros_com/# PX4-ROS2 桥接
+├── swarm_ws/src/             # ROS 2 功能包
+│   ├── bringup/              # 仿真启停脚本、起飞脚本、demo 示例
+│   ├── swarm_api/            # 集群控制框架（Drone/Swarm/Strategy，Python）
+│   ├── ground_station/       # Web 地面站（rosbridge + Three.js）
+│   ├── swarm_msgs/           # 自定义消息（TargetMap / TaskAssignment）
+│   └── px4_msgs/ px4_ros_com/# PX4-ROS2 桥接
+└── tools/
+    ├── drone_model/          # CAD→仿真/地面站模型转换管线脚本
+    └── comm_module_config/     # 通信模块（串口转以太网）Web 配置工具（替代 NetModuleConfig）
 
 # 规划中的功能包（感知 perception_*、融合 swarm_fusion、任务 swarm_task、
 # 安全 safety_guard、无人车 ugv_bridge、UWB uwb_driver、评估 evaluation 等）

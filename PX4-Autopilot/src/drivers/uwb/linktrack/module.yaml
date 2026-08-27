@@ -1,0 +1,45 @@
+module_name: Nooploop LinkTrack UWB positioning
+serial_config:
+  - command: linktrack start -d ${SERIAL_DEV} -b p:${BAUD_PARAM}
+    port_config_param:
+      name: LT_PORT_CFG
+      group: UWB
+
+parameters:
+  - group: UWB
+    definitions:
+      LT_TF_ROT:
+        description:
+          short: LinkTrack anchor frame to local frame mapping
+          long: |
+            Coordinate mapping from the Nooploop anchor coordinate system to
+            the PX4 local frame. The LinkTrack anchor system is right-handed
+            with Z up (ENU-like). Default converts ENU to NED (x<->y, z flipped).
+            Use "NED passthrough" only if the anchor frame was surveyed as NED.
+        type: enum
+        values:
+          0: ENU to NED (default, anchor frame is ENU/Z-up)
+          1: NED passthrough
+        default: 0
+
+      LT_COV_POS:
+        description:
+          short: Fallback position variance
+          long: Position variance used when the tag does not report a valid
+                error-of-position estimate (eop). Unit is variance, i.e.
+                (standard deviation)^2.
+        type: float
+        unit: m^2
+        decimal: 4
+        increment: 0.0025
+        default: 0.01
+
+      LT_COV_VEL:
+        description:
+          short: Velocity variance
+          long: Velocity variance reported with the visual odometry velocity.
+        type: float
+        unit: (m/s)^2
+        decimal: 4
+        increment: 0.0025
+        default: 0.04

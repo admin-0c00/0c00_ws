@@ -1,0 +1,7 @@
+menuconfig DRIVERS_UWB_LINKTRACK
+	bool "Nooploop LinkTrack UWB"
+	default n
+	---help---
+		Enable support for Nooploop LinkTrack UWB positioning modules
+		(NLink binary protocol, tag frame 0). Publishes
+		vehicle_visual_odometry for EKF2 external vision fusion.

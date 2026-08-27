@@ -4,3 +4,6 @@ log/
 logs/
 *.pyc
 __pycache__/
+
+# 真机固件编译工具链（免 sudo 本地安装，不入库，见 docs/MAINTENANCE.md 2026-08-27）
+tools/toolchain/

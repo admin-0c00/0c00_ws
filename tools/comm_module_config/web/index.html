@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<!--
+SPDX-License-Identifier: GPL-3.0-only
+Copyright (C) 2026 零创无穷（成都）科技有限责任公司
+本文件是 SwarmCore-Sim 的一部分，依据 GNU GPL v3 发布（协议全文见仓库根目录 LICENSE）。
+本软件按"现状"提供，不附带任何明示或默示担保。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>通信模块配置</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon_32.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #14161a; color: #d5dae1; font: 14px/1.5 "PingFang SC", "Microsoft YaHei", sans-serif; }
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #1c1f26; border-bottom: 1px solid #2a2e38; }
+  header h1 { font-size: 16px; color: #9d7bea; margin-right: 12px; }
+  main { display: flex; gap: 12px; padding: 12px 16px; align-items: flex-start; }
+  button { background: #6d4fc2; color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #7f61d9; }
+  button:disabled { background: #3a3f4b; cursor: not-allowed; }
+  button.ghost { background: #2a2e38; }
+  button.danger { background: #b04040; }
+  select, input[type=text], input[type=number] { background: #0f1114; color: #d5dae1; border: 1px solid #343a46; border-radius: 5px; padding: 6px 8px; font-size: 13px; width: 100%; }
+  select:focus, input:focus { outline: none; border-color: #6d4fc2; }
+  .card { background: #1c1f26; border: 1px solid #2a2e38; border-radius: 8px; padding: 14px; }
+  #devlist { width: 300px; flex-shrink: 0; }
+  #devlist .dev { padding: 9px 10px; border-radius: 6px; cursor: pointer; margin-bottom: 6px; border: 1px solid transparent; }
+  #devlist .dev:hover { background: #232733; }
+  #devlist .dev.sel { border-color: #6d4fc2; background: #232733; }
+  #devlist .dev .mac { font-family: monospace; font-size: 12px; color: #8b93a1; }
+  #panel { flex: 1; min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; margin-top: 10px; }
+  .field label { display: block; font-size: 12px; color: #8b93a1; margin-bottom: 3px; }
+  .field.inline { display: flex; align-items: center; gap: 8px; padding-top: 18px; }
+  .field.inline label { margin: 0; font-size: 13px; color: #d5dae1; }
+  h3 { font-size: 14px; color: #9d7bea; margin-bottom: 4px; }
+  .tabs { display: flex; gap: 6px; margin: 14px 0 0; }
+  .tabs button { background: #2a2e38; border-radius: 6px 6px 0 0; }
+  .tabs button.active { background: #6d4fc2; }
+  .actions { margin-top: 16px; display: flex; gap: 10px; }
+  #toast { position: fixed; right: 16px; bottom: 16px; background: #232733; border: 1px solid #343a46; border-radius: 8px; padding: 10px 16px; max-width: 380px; display: none; z-index: 9; }
+  #toast.ok { border-color: #3f9e5f; }
+  #toast.err { border-color: #b04040; }
+  .hint { font-size: 12px; color: #8b93a1; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>通信模块配置</h1>
+  <label style="font-size:12px;color:#8b93a1">网卡</label>
+  <select id="nic" style="width:280px"></select>
+  <button id="btnSearch">搜索设备</button>
+  <span id="searchHint" class="hint"></span>
+</header>
+<main>
+  <div id="devlist" class="card">
+    <h3>设备列表</h3>
+    <div id="devs" class="hint">点【搜索设备】扫描局域网内的通信模块</div>
+  </div>
+  <div id="panel" class="card">
+    <h3>参数配置 <span id="curDev" class="hint"></span></h3>
+    <div id="form" style="display:none">
+      <h3 style="margin-top:6px">基础设置</h3>
+      <div class="grid">
+        <div class="field"><label>设备名</label><input type="text" id="name" maxlength="20"></div>
+        <div class="field"><label>MAC 地址（谨慎修改）</label><input type="text" id="mac"></div>
+        <div class="field inline"><input type="checkbox" id="dhcp"><label for="dhcp">DHCP 自动获取 IP</label></div>
+        <div class="field"><label>设备 IP</label><input type="text" id="ip"></div>
+        <div class="field"><label>子网掩码</label><input type="text" id="mask"></div>
+        <div class="field"><label>默认网关</label><input type="text" id="gateway"></div>
+        <div class="field inline"><input type="checkbox" id="uart_neg"><label for="uart_neg">允许串口协商进入配置模式</label></div>
+      </div>
+
+      <div class="tabs">
+        <button id="tab1" class="active">端口 1（主通道）</button>
+        <button id="tab2">端口 2（辅助）</button>
+      </div>
+      <div class="grid" id="portForm">
+        <div class="field inline"><input type="checkbox" id="p_enabled"><label for="p_enabled">启用该端口</label></div>
+        <div class="field"><label>工作模式</label>
+          <select id="p_mode">
+            <option value="0">TCP Server</option><option value="1">TCP Client</option>
+            <option value="2">UDP Server</option><option value="3">UDP Client</option>
+          </select></div>
+        <div class="field"><label>本地端口</label><input type="number" id="p_local_port" min="1" max="65535"></div>
+        <div class="field inline"><input type="checkbox" id="p_rand"><label for="p_rand">TCP Client 随机本地端口</label></div>
+        <div class="field"><label>目的 IP（Client 模式）</label><input type="text" id="p_dest_ip"></div>
+        <div class="field"><label>目的端口</label><input type="number" id="p_dest_port" min="1" max="65535"></div>
+        <div class="field inline"><input type="checkbox" id="p_domain_en"><label for="p_domain_en">域名解析（端口1）</label></div>
+        <div class="field"><label>目的域名</label><input type="text" id="p_domain" maxlength="20"></div>
+        <div class="field"><label>波特率 (300~10000000)</label>
+          <input type="number" id="p_baud" list="bauds" min="300" max="10000000">
+          <datalist id="bauds">
+            <option value="9600"></option><option value="19200"></option><option value="38400"></option>
+            <option value="57600"></option><option value="115200"></option><option value="230400"></option>
+            <option value="460800"></option><option value="921600"></option>
+          </datalist></div>
+        <div class="field"><label>数据位</label>
+          <select id="p_data_bits"><option>5</option><option>6</option><option>7</option><option selected>8</option></select></div>
+        <div class="field"><label>停止位</label>
+          <select id="p_stop_bits"><option value="1">1</option><option value="2">2</option></select></div>
+        <div class="field"><label>校验</label>
+          <select id="p_parity">
+            <option value="4" selected>无</option><option value="0">奇</option>
+            <option value="1">偶</option><option value="2">Mark</option><option value="3">Space</option>
+          </select></div>
+        <div class="field"><label>RX 打包长度 (≤1024)</label><input type="number" id="p_pack_len" min="1" max="1024"></div>
+        <div class="field"><label>RX 打包超时 (×10ms，0=关闭)</label><input type="number" id="p_pack_timeout" min="0" max="255"></div>
+        <div class="field"><label>网线断开时</label>
+          <select id="p_phy"><option value="0">保持 TCP 连接</option><option value="1">断开 TCP 连接</option></select></div>
+        <div class="field"><label>网络连接建立时</label>
+          <select id="p_clear"><option value="0">保留串口缓冲</option><option value="1">清空串口缓冲</option></select></div>
+      </div>
+    </div>
+
+    <div class="actions" id="actionsBar" style="display:none">
+      <button id="btnRead" class="ghost">读取参数</button>
+      <button id="btnWrite" disabled>写入配置</button>
+      <button id="btnReset" class="danger">恢复出厂设置</button>
+      <span class="hint">写入后模块会自动重启，约 3 秒后请重新【搜索设备】确认配置生效。</span>
+    </div>
+    <div id="noSel" class="hint">先在左侧选择一台设备，然后点【读取参数】。</div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+let curMac = null;      // 当前选中设备 MAC
+let curPort = 1;        // 当前编辑端口 1/2
+let cfgCache = null;    // 最近一次读取的完整配置
+
+const $ = id => document.getElementById(id);
+
+function toast(msg, ok = true) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = ok ? "ok" : "err";
+  t.style.display = "block";
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.style.display = "none", 4000);
+}
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {})
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "未知错误");
+  return j;
+}
+
+const nic = () => $("nic").value;
+
+async function loadNics() {
+  const j = await (await fetch("/api/nics")).json();
+  $("nic").innerHTML = j.nics.map(n =>
+    `<option value="${n.name}">${n.name} — ${n.ip} (${n.mac})</option>`).join("");
+  if (!j.nics.length) toast("未发现可用网卡", false);
+}
+
+async function doSearch() {
+  $("btnSearch").disabled = true;
+  $("searchHint").textContent = "搜索中…";
+  try {
+    const j = await api("/api/search", {nic: nic()});
+    $("searchHint").textContent = `发现 ${j.devices.length} 台`;
+    if (!j.devices.length) {
+      $("devs").innerHTML = '<div class="hint">未发现模块。检查：① 网卡是否选对（接模块的那个）② 模块是否上电联网</div>';
+      return;
+    }
+    $("devs").innerHTML = "";
+    j.devices.forEach(d => {
+      const el = document.createElement("div");
+      el.className = "dev" + (d.mac === curMac ? " sel" : "");
+      el.innerHTML = `<b>${d.name || "通信模块"}</b> ${d.ip} <span class="hint">v${d.version}</span><br><span class="mac">${d.mac}</span>`;
+      el.onclick = () => { curMac = d.mac; cfgCache = null; showForm(false);
+        document.querySelectorAll(".dev").forEach(x => x.classList.remove("sel"));
+        el.classList.add("sel"); $("curDev").textContent = "— " + d.mac; };
+      $("devs").appendChild(el);
+    });
+  } catch (e) { toast(e.message, false); $("searchHint").textContent = ""; }
+  $("btnSearch").disabled = false;
+}
+
+function showForm(on) {
+  // on=true: 参数已读取，显示完整表单；on=false: 只显示按钮栏（未读参数）
+  $("form").style.display = on ? "" : "none";
+  $("noSel").style.display = curMac ? "none" : "";
+  $("actionsBar").style.display = curMac ? "" : "none";
+  $("btnWrite").disabled = !on;
+}
+
+// ---- 表单 <-> 配置模型 ----
+function fillPort(p) {
+  $("p_enabled").checked = !!p.enabled;
+  $("p_mode").value = p.mode;
+  $("p_local_port").value = p.local_port;
+  $("p_rand").checked = !!p.rand_sport;
+  $("p_dest_ip").value = p.dest_ip;
+  $("p_dest_port").value = p.dest_port;
+  $("p_domain_en").checked = !!p.domain_enable;
+  $("p_domain").value = p.domain;
+  $("p_baud").value = p.baud;
+  $("p_data_bits").value = p.data_bits;
+  $("p_stop_bits").value = p.stop_bits;
+  $("p_parity").value = p.parity;
+  $("p_pack_len").value = p.rx_pack_len;
+  $("p_pack_timeout").value = p.rx_pack_timeout;
+  $("p_phy").value = p.phy_disconnect;
+  $("p_clear").value = p.clear_on_connect;
+}
+
+function readPort() {
+  return {
+    enabled: $("p_enabled").checked ? 1 : 0,
+    mode: +$("p_mode").value,
+    local_port: +$("p_local_port").value,
+    rand_sport: $("p_rand").checked ? 1 : 0,
+    dest_ip: $("p_dest_ip").value.trim(),
+    dest_port: +$("p_dest_port").value,
+    domain_enable: $("p_domain_en").checked ? 1 : 0,
+    domain: $("p_domain").value.trim(),
+    baud: +$("p_baud").value,
+    data_bits: +$("p_data_bits").value,
+    stop_bits: +$("p_stop_bits").value,
+    parity: +$("p_parity").value,
+    rx_pack_len: +$("p_pack_len").value,
+    rx_pack_timeout: +$("p_pack_timeout").value,
+    phy_disconnect: +$("p_phy").value,
+    clear_on_connect: +$("p_clear").value,
+  };
+}
+
+function fillAll(c) {
+  $("name").value = c.name;
+  $("mac").value = c.mac;
+  $("dhcp").checked = !!c.dhcp;
+  $("ip").value = c.ip; $("mask").value = c.mask; $("gateway").value = c.gateway;
+  $("uart_neg").checked = !!c.uart_negotiate;
+  fillPort(curPort === 1 ? c.port1 : c.port2);
+  dhcpToggle();
+}
+
+function collectAll() {
+  const c = JSON.parse(JSON.stringify(cfgCache));
+  c.name = $("name").value.trim();
+  c.mac = $("mac").value.trim();
+  c.dhcp = $("dhcp").checked ? 1 : 0;
+  c.ip = $("ip").value.trim(); c.mask = $("mask").value.trim();
+  c.gateway = $("gateway").value.trim();
+  c.uart_negotiate = $("uart_neg").checked ? 1 : 0;
+  if (curPort === 1) c.port1 = Object.assign(c.port1, readPort());
+  else c.port2 = Object.assign(c.port2, readPort());
+  return c;
+}
+
+function dhcpToggle() {
+  const off = $("dhcp").checked;
+  ["ip", "mask", "gateway"].forEach(id => $(id).disabled = off);
+}
+
+function validate(c) {
+  const ipok = s => /^(\d{1,3}\.){3}\d{1,3}$/.test(s) && s.split(".").every(x => +x <= 255);
+  if (!ipok(c.ip) || !ipok(c.mask) || !ipok(c.gateway)) return "IP/掩码/网关格式不正确";
+  if (!/^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(c.mac)) return "MAC 格式应为 xx:xx:xx:xx:xx:xx";
+  for (const p of [c.port1, c.port2]) {
+    if (p.baud < 300 || p.baud > 10000000) return "波特率范围 300~10000000";
+    if (p.local_port < 1 || p.local_port > 65535 || p.dest_port < 1 || p.dest_port > 65535) return "端口范围 1~65535";
+    if (p.rx_pack_len < 1 || p.rx_pack_len > 1024) return "RX 打包长度范围 1~1024";
+    if ((p.mode === 1 || p.mode === 3) && p.enabled && !p.domain_enable && !ipok(p.dest_ip))
+      return "Client 模式需要合法的目的 IP";
+  }
+  return null;
+}
+
+async function doRead() {
+  if (!curMac) return toast("先选择设备", false);
+  $("btnRead").disabled = true;
+  try {
+    const j = await api("/api/get_config", {nic: nic(), mac: curMac});
+    cfgCache = j.config;
+    fillAll(cfgCache);
+    showForm(true);
+    toast("读取成功");
+  } catch (e) { toast(e.message, false); }
+  $("btnRead").disabled = false;
+}
+
+async function doWrite() {
+  if (!cfgCache) return toast("请先读取参数", false);
+  const c = collectAll();
+  const err = validate(c);
+  if (err) return toast(err, false);
+  if (c.mac !== curMac && !confirm("你修改了 MAC 地址，写错会导致设备难以找回。确认写入？")) return;
+  $("btnWrite").disabled = true;
+  try {
+    const j = await api("/api/set_config", {nic: nic(), mac: curMac, config: c});
+    toast(j.msg);
+    cfgCache = null;
+    showForm(false);  // 模块重启后参数可能已变，要求重新读取再写
+  } catch (e) { toast(e.message, false); $("btnWrite").disabled = false; }
+}
+
+async function doReset() {
+  if (!curMac) return toast("先选择设备", false);
+  if (!confirm(`确认将 ${curMac} 恢复出厂设置？所有参数将还原。`)) return;
+  try {
+    const j = await api("/api/factory_reset", {nic: nic(), mac: curMac});
+    toast(j.msg);
+    showForm(false); cfgCache = null;
+  } catch (e) { toast(e.message, false); }
+}
+
+function switchPort(p) {
+  // 切换前把当前表单值存回 cfgCache，避免丢编辑
+  if (cfgCache) {
+    if (curPort === 1) cfgCache.port1 = Object.assign(cfgCache.port1, readPort());
+    else cfgCache.port2 = Object.assign(cfgCache.port2, readPort());
+  }
+  curPort = p;
+  $("tab1").classList.toggle("active", p === 1);
+  $("tab2").classList.toggle("active", p === 2);
+  if (cfgCache) fillPort(p === 1 ? cfgCache.port1 : cfgCache.port2);
+}
+
+$("btnSearch").onclick = doSearch;
+$("btnRead").onclick = doRead;
+$("btnWrite").onclick = doWrite;
+$("btnReset").onclick = doReset;
+$("tab1").onclick = () => switchPort(1);
+$("tab2").onclick = () => switchPort(2);
+$("dhcp").onchange = dhcpToggle;
+
+loadNics();
+</script>
+</body>
+</html>

@@ -150,6 +150,15 @@ if (os.path.exists('platforms/nuttx/NuttX/nuttx/.git')):
 #define NUTTX_GIT_VERSION_BINARY 0x{nuttx_git_version_short}
 #define NUTTX_GIT_TAG_STR  "{nuttx_git_tag}"
 """
+else:
+    # SwarmCore-Sim snapshot: NuttX is flattened into the tree, no own git repo.
+    # v1.15.4 pins PX4/NuttX 5d74bc1（基于 nuttx-11.0.0 + PX4 补丁），按上游
+    # 版本脚本的取值逻辑（fork 内最高标签）应为 "v11.0.0"。
+    header += """
+#define NUTTX_GIT_VERSION_STR  "5d74bc138955e6f010a38e0f87f34e9a9019aecc"
+#define NUTTX_GIT_VERSION_BINARY 0x5d74bc138955e6f0
+#define NUTTX_GIT_TAG_STR  "v11.0.0"
+"""
 
 
 if old_header != header:
