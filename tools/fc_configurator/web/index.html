@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<!--
+SPDX-License-Identifier: GPL-3.0-only
+Copyright (C) 2026 零创无穷（成都）科技有限责任公司
+本文件是 SwarmCore-Sim 的一部分，依据 GNU GPL v3 发布（协议全文见仓库根目录 LICENSE）。
+本软件按"现状"提供，不附带任何明示或默示担保。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>飞控配置</title>
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon_32.png">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d13;
+    --panel: #131722;
+    --panel-2: #181d2b;
+    --border: #242b3d;
+    --border-soft: #1e2534;
+    --text: #e8ebf2;
+    --muted: #8b96ab;
+    --accent: #6d4fc2;
+    --accent-hi: #9d7bea;
+    --grad: linear-gradient(135deg, #6d4fc2 0%, #9d7bea 100%);
+    --ok: #34c77b;
+    --danger: #e05656;
+    --warn-c: #e8c26a;
+    --mono: "JetBrains Mono", "SF Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    background-image: radial-gradient(1200px 600px at 85% -10%, rgba(109,79,194,.14), transparent 60%),
+                      radial-gradient(900px 500px at -10% 110%, rgba(157,123,234,.07), transparent 55%);
+    color: var(--text);
+    font: 14px/1.6 "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    display: flex; overflow: hidden;
+  }
+  ::selection { background: rgba(109,79,194,.45); }
+
+  /* ---------- 侧边栏 ---------- */
+  .side {
+    width: 216px; flex-shrink: 0; display: flex; flex-direction: column;
+    background: rgba(19,23,34,.85); border-right: 1px solid var(--border-soft);
+    backdrop-filter: blur(6px);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px 16px; border-bottom: 1px solid var(--border-soft); }
+  .brand img { height: 30px; filter: drop-shadow(0 0 10px rgba(157,123,234,.45)); }
+  .brand b { display: block; font-size: 15px; letter-spacing: 1px; }
+  .brand span { display: block; font-size: 10px; color: var(--muted); letter-spacing: .5px; }
+  nav { padding: 12px 10px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  nav button {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: 0; color: var(--muted); text-align: left;
+    padding: 9px 12px; border-radius: 9px; font-size: 13.5px; cursor: pointer;
+    position: relative; transition: all .18s ease;
+  }
+  nav button svg { width: 17px; height: 17px; flex-shrink: 0; opacity: .8; }
+  nav button:hover { background: var(--panel-2); color: var(--text); }
+  nav button.active {
+    background: linear-gradient(90deg, rgba(109,79,194,.22), rgba(109,79,194,.06));
+    color: #fff;
+  }
+  nav button.active::before {
+    content: ""; position: absolute; left: 0; top: 20%; bottom: 20%;
+    width: 3px; border-radius: 2px; background: var(--grad);
+    box-shadow: 0 0 8px rgba(157,123,234,.8);
+  }
+  .side-foot { padding: 12px 16px; font-size: 10.5px; color: #59627a; border-top: 1px solid var(--border-soft); }
+
+  /* ---------- 主区 ---------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+    padding: 12px 24px; border-bottom: 1px solid var(--border-soft);
+    background: rgba(11,13,19,.6); backdrop-filter: blur(6px);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px 14px; font-size: 12.5px; color: var(--muted);
+  }
+  .pill.on { color: var(--text); border-color: rgba(52,199,123,.4); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #5a606c; flex-shrink: 0; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px rgba(52,199,123,.9); animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .armed {
+    color: #fff; background: linear-gradient(135deg, #c23a3a, #e05656);
+    padding: 5px 14px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    letter-spacing: .5px; box-shadow: 0 0 14px rgba(224,86,86,.5); animation: pulse 1.2s infinite;
+  }
+  .content { flex: 1; overflow-y: auto; padding: 22px 24px 40px; }
+  .page { max-width: 1180px; margin: 0 auto; animation: fadein .22s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } }
+
+  /* ---------- 卡片 ---------- */
+  .card {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: 14px; padding: 18px 20px;
+    box-shadow: 0 6px 24px rgba(0,0,0,.28);
+  }
+  h3 {
+    font-size: 13px; color: var(--accent-hi); margin-bottom: 12px;
+    letter-spacing: 1.2px; font-weight: 600; text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h3::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+  /* ---------- 控件 ---------- */
+  button, a.abtn {
+    background: var(--grad); color: #fff; border: 0; border-radius: 9px;
+    padding: 8px 18px; cursor: pointer; font-size: 13px; font-weight: 500;
+    letter-spacing: .5px; transition: all .16s ease; text-decoration: none;
+    display: inline-block; box-shadow: 0 2px 10px rgba(109,79,194,.35);
+  }
+  button:hover, a.abtn:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(109,79,194,.5); filter: brightness(1.08); }
+  button:active, a.abtn:active { transform: translateY(0); }
+  button:disabled { background: #262c3c; box-shadow: none; cursor: not-allowed; transform: none; filter: none; color: #6b7489; }
+  button.ghost, a.abtn.ghost { background: var(--panel-2); border: 1px solid var(--border); box-shadow: none; color: var(--text); }
+  button.ghost:hover, a.abtn.ghost:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(109,79,194,.25); }
+  button.danger { background: linear-gradient(135deg, #a83232, #d14b4b); box-shadow: 0 2px 10px rgba(209,75,75,.3); }
+  select, input[type=text], input[type=number], input[type=file] {
+    background: #0d1017; color: var(--text); border: 1px solid var(--border);
+    border-radius: 9px; padding: 8px 12px; font-size: 13px; width: 100%;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  select:focus, input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(109,79,194,.22); }
+  input[type=file] { padding: 7px 10px; }
+  input[type=file]::file-selector-button {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 7px; padding: 5px 12px; margin-right: 10px; cursor: pointer; font-size: 12.5px;
+  }
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: #262c3c; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--grad); box-shadow: 0 0 10px rgba(157,123,234,.7); cursor: pointer;
+    border: 2px solid #0d1017;
+  }
+  input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 5px; letter-spacing: .4px; }
+  .field.inline { display: flex; align-items: center; gap: 8px; padding-top: 18px; }
+  .field.inline label { margin: 0; font-size: 13px; color: var(--text); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px 18px; }
+  .actions { margin-top: 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  /* ---------- 连接页 ---------- */
+  .chan { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 860px) { .chan { grid-template-columns: 1fr; } }
+
+  /* ---------- 参数页 ---------- */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .toolbar input[type=text] { width: 280px; }
+  .toolbar select { width: 200px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 12px; border-bottom: 1px solid var(--border-soft); text-align: left; vertical-align: middle; }
+  th {
+    color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    position: sticky; top: 0; background: var(--panel-2); z-index: 1;
+  }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: rgba(109,79,194,.07); }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,.012); }
+  tbody tr:nth-child(even):hover { background: rgba(109,79,194,.07); }
+  .pname { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; color: #cdd6e6; }
+  .pval {
+    width: 110px; font-family: var(--mono); font-size: 12.5px;
+    background: transparent !important; border-color: transparent !important;
+  }
+  .pval:hover { border-color: var(--border) !important; background: #0d1017 !important; }
+  .pval:focus { border-color: var(--accent) !important; background: #0d1017 !important; }
+  tr.diffrow .pname, tr.diffrow .pval { color: var(--warn-c); }
+  tr.diffrow .pname::after { content: "●"; color: var(--warn-c); font-size: 8px; margin-left: 6px; vertical-align: 2px; }
+  .tag { font-size: 11px; color: var(--warn-c); }
+  .prog { background: #0d1017; border: 1px solid var(--border); border-radius: 999px; height: 10px; overflow: hidden; margin-top: 8px; }
+  .prog > i {
+    display: block; height: 100%; width: 0; border-radius: 999px;
+    background: var(--grad); box-shadow: 0 0 12px rgba(157,123,234,.6);
+    transition: width .3s ease;
+  }
+  .diffline { font-family: var(--mono); font-size: 12px; padding: 2px 0; }
+
+  /* ---------- 校准页 ---------- */
+  .calgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+  .calcard { text-align: left; transition: all .18s ease; }
+  .calcard:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 26px rgba(109,79,194,.18); }
+  .calcard .ic { font-size: 22px; margin-bottom: 6px; filter: grayscale(.2); }
+  .msglog {
+    background: #0a0c11; border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; height: 230px; overflow-y: auto;
+    font-family: var(--mono); font-size: 13px; margin-top: 12px; line-height: 1.8;
+  }
+
+  /* ---------- 警示条 ---------- */
+  .warn {
+    background: linear-gradient(135deg, rgba(194,58,58,.16), rgba(194,58,58,.05));
+    border: 1px solid rgba(224,86,86,.45); color: #f0b5b5;
+    padding: 12px 18px; border-radius: 12px; margin-bottom: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  /* ---------- 滚动条 ---------- */
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #2c3449; border-radius: 5px; border: 2px solid var(--bg); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- Toast ---------- */
+  #toast {
+    position: fixed; right: 20px; bottom: 20px; background: var(--panel-2);
+    border: 1px solid var(--border); border-left: 4px solid var(--ok);
+    border-radius: 10px; padding: 12px 18px; max-width: 400px; display: none; z-index: 9;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5); font-size: 13px;
+    animation: slideup .25s ease;
+  }
+  #toast.ok { border-left-color: var(--ok); }
+  #toast.err { border-left-color: var(--danger); }
+  @keyframes slideup { from { opacity: 0; transform: translateY(10px); } }
+</style>
+</head>
+<body>
+<aside class="side">
+  <div class="brand">
+    <img src="logo.png" alt="logo">
+    <div><b>飞控配置</b><span>SwarmCore Configurator</span></div>
+  </div>
+  <nav>
+    <button id="tab-conn" class="active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="19.5" r="1" fill="currentColor"/></svg>
+      连接</button>
+    <button id="tab-param">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2" fill="var(--bg)"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2" fill="var(--bg)"/></svg>
+      参数</button>
+    <button id="tab-set">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg>
+      设置</button>
+    <button id="tab-calib">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5 13.5 13.5 8.5 15.5 10.5 10.5Z" fill="currentColor" stroke="none"/></svg>
+      校准</button>
+    <button id="tab-motor">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="2.2"/><path d="M12 9.8V3.5M13.9 13.1l5.5 3.2M10.1 13.1l-5.5 3.2"/></svg>
+      电机测试</button>
+    <button id="tab-fs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
+      文件管理</button>
+    <button id="tab-fw">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg>
+      固件</button>
+  </nav>
+  <div class="side-foot">SwarmCore-Sim · 零创无穷</div>
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    <span class="pill" id="connPill"><span id="connDot" class="dot"></span><span id="connTxt">未连接</span></span>
+    <span id="armedBadge" class="armed" style="display:none">已解锁 ARMED</span>
+  </header>
+
+  <main class="content">
+
+  <!-- ============ 连接 ============ -->
+  <section id="page-conn" class="page">
+    <div class="chan">
+      <div class="card">
+        <h3>网络（UDP）</h3>
+        <div class="field"><label>飞控地址 host</label><input type="text" id="udpHost" value="127.0.0.1"></div>
+        <div class="field"><label>远程端口 port（飞控收）</label><input type="number" id="udpPort" value="14550" min="1" max="65535"></div>
+        <div class="field"><label>本地绑定端口 bind_port（本机收）</label><input type="number" id="udpBind" value="0" min="0" max="65535"></div>
+        <div class="hint">CH9121 模块：host=模块IP、port=14550、bind=0。<br>SITL：port=18570、bind=14550（与 QGC 冲突时改用专用链路端口，见 README）。</div>
+        <button id="btnConnUdp" style="margin-top:10px">连接</button>
+        <div class="hint" style="margin-top:12px">本机网卡参考：<button id="btnPorts" class="ghost" style="padding:2px 8px;font-size:11px">刷新</button></div>
+        <div id="nicList" class="hint"></div>
+      </div>
+      <div class="card">
+        <h3>USB 串口</h3>
+        <div class="field"><label>串口设备</label><select id="serDev"></select></div>
+        <div class="field"><label>波特率</label>
+          <select id="serBaud">
+            <option>57600</option><option selected>115200</option><option>230400</option>
+            <option>460800</option><option>921600</option>
+          </select></div>
+        <button id="btnConnSer">连接</button>
+        <div class="hint">连接为阻塞操作，最长约 11 秒，请耐心等待。</div>
+      </div>
+    </div>
+    <div class="card" id="connInfo" style="display:none;margin-top:14px">
+      <h3>已连接 <span id="armed2" class="armed" style="display:none;margin-left:8px">已解锁</span></h3>
+      <div id="connInfoTxt" style="color:var(--muted)"></div>
+      <div class="actions"><button id="btnDisc" class="danger">断开</button></div>
+    </div>
+  </section>
+
+  <!-- ============ 参数 ============ -->
+  <section id="page-param" class="page" style="display:none">
+    <div class="card">
+      <div class="toolbar">
+        <input type="text" id="pSearch" placeholder="搜索参数名 / 描述…">
+        <select id="pGroup"><option value="">全部分组</option></select>
+        <button id="btnPull" data-need="conn">拉取参数</button>
+        <a class="abtn ghost" href="/api/params/export">导出</a>
+        <button id="btnImport" class="ghost">导入</button>
+        <input type="file" id="impFile" accept=".json,application/json" style="display:none">
+        <span id="pCount" class="hint" style="margin-top:0"></span>
+      </div>
+      <div id="pProg" style="display:none">
+        <span class="hint" id="pProgTxt" style="margin-top:0">拉取中…</span>
+        <div class="prog"><i id="pProgBar"></i></div>
+      </div>
+      <div id="impPrev" style="display:none;border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-top:10px;background:rgba(109,79,194,.06)">
+        <h3>导入预览（仅显示将修改的参数）</h3>
+        <div id="impList" style="max-height:240px;overflow:auto"></div>
+        <div class="actions">
+          <button id="btnImpOk">确认导入</button>
+          <button id="btnImpCancel" class="ghost">取消</button>
+          <span id="impStat" class="hint" style="margin-top:0"></span>
+        </div>
+      </div>
+      <div id="pEmpty" class="hint">请先点【拉取参数】</div>
+      <div id="pTableWrap" style="display:none">
+        <div style="max-height:62vh;overflow:auto;border:1px solid var(--border-soft);border-radius:10px">
+          <table>
+            <thead><tr>
+              <th>名称</th><th>当前值</th><th>默认值</th><th>描述</th><th>单位</th><th>范围</th><th>需重启</th>
+            </tr></thead>
+            <tbody id="pTbody"></tbody>
+          </table>
+        </div>
+        <div class="actions"><button id="btnShowAll" class="ghost" style="display:none">显示全部</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 设置（定位模式 + 安全机制） ============ -->
+  <section id="page-set" class="page" style="display:none">
+    <div class="card">
+      <h3>定位配置（EKF2）</h3>
+      <div class="hint" style="margin:0 0 12px">列出与定位源相关的 EKF2 参数及中文说明（含枚举/位掩码含义）。直接在下表"新值"列按自己情况填写，点【写入修改项】——只写与当前值不同的参数。需先到【参数】页拉取一次参数。EKF2 参数重启后生效，写完请到【固件】页重启。</div>
+      <div class="toolbar">
+        <button id="btnEkfRead" class="ghost" data-need="conn">刷新当前值</button>
+        <button id="btnEkfWrite" data-need="conn">写入修改项</button>
+      </div>
+      <div id="ekfEmpty" class="hint">请先到【参数】页拉取一次参数，再回到本页点【刷新当前值】。</div>
+      <div id="ekfTableWrap" style="display:none">
+        <div style="max-height:50vh;overflow:auto;border:1px solid var(--border-soft);border-radius:10px">
+          <table>
+            <thead><tr><th>参数</th><th style="width:100px">当前值</th><th style="width:120px">新值</th><th>说明</th></tr></thead>
+            <tbody id="ekfTbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="presetLog" class="msglog" style="display:none;height:150px"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>安全机制</h3>
+      <div class="grid">
+        <div class="field"><label>电子围栏动作 GF_ACTION</label>
+          <select id="gfAction">
+            <option value="0">禁用</option><option value="1">仅警告</option>
+            <option value="2">悬停</option><option value="3">返航</option>
+            <option value="4">终止（坠机，危险）</option><option value="5">降落</option>
+          </select></div>
+        <div class="field"><label>围栏水平半径 GF_MAX_HOR_DIST（m，0=不限）</label>
+          <input type="number" id="gfHor" min="0" max="100000"></div>
+        <div class="field"><label>围栏高度上限 GF_MAX_VER_DIST（m，0=不限）</label>
+          <input type="number" id="gfVer" min="0" max="100000"></div>
+        <div class="field"><label>返航高度 RTL_RETURN_ALT（m）</label>
+          <input type="number" id="rtlAlt" min="0" max="500"></div>
+        <div class="field"><label>低电动作 COM_LOW_BAT_ACT</label>
+          <select id="batAct">
+            <option value="0">仅警告</option><option value="2">降落</option>
+            <option value="3">临界返航 / 紧急降落</option>
+          </select></div>
+        <div class="field"><label>降落后自动上锁 COM_DISARM_LAND（s）</label>
+          <input type="number" id="disarmLand" min="0" max="60" step="0.1"></div>
+      </div>
+      <div class="actions">
+        <button id="btnSfRead" class="ghost" data-need="conn">读取当前值</button>
+        <button id="btnSfWrite" data-need="conn">写入安全配置</button>
+      </div>
+      <div class="hint">围栏以 Home 点（解锁位置）为圆心，高度上限相对 Home 点。写入即时生效，无需重启。</div>
+    </div>
+  </section>
+
+  <!-- ============ 校准 ============ -->
+  <section id="page-calib" class="page" style="display:none">
+    <div class="calgrid">
+      <div class="card calcard">
+        <div class="ic">🧭</div>
+        <h3>陀螺仪</h3>
+        <div class="hint" style="margin-top:0;margin-bottom:10px">飞机静置水平面，勿动。</div>
+        <button class="calibBtn" data-need="disarmed" data-what="gyro">开始</button>
+      </div>
+      <div class="card calcard">
+        <div class="ic">📐</div>
+        <h3>加速度计 · 六面</h3>
+        <div class="hint" style="margin-top:0;margin-bottom:10px">按下方提示依次摆放六个面，每面保持静止。</div>
+        <button class="calibBtn" data-need="disarmed" data-what="accel">开始</button>
+      </div>
+      <div class="card calcard">
+        <div class="ic">🧲</div>
+        <h3>磁罗盘</h3>
+        <div class="hint" style="margin-top:0;margin-bottom:10px">远离磁干扰源，按提示绕各轴旋转机体。</div>
+        <button class="calibBtn" data-need="disarmed" data-what="mag">开始</button>
+      </div>
+      <div class="card calcard">
+        <div class="ic">🌡</div>
+        <h3>气压计</h3>
+        <div class="hint" style="margin-top:0;margin-bottom:10px">静置，避免气流直吹气压计。</div>
+        <button class="calibBtn" data-need="disarmed" data-what="baro">开始</button>
+      </div>
+      <div class="card calcard">
+        <div class="ic">📏</div>
+        <h3>水平校准</h3>
+        <div class="hint" style="margin-top:0;margin-bottom:10px">飞机置于水平面，保持静止。</div>
+        <button class="calibBtn" data-need="disarmed" data-what="level">开始</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>校准过程</h3>
+      <div id="calibProg" style="display:none">
+        <span class="hint" id="calibProgTxt" style="margin-top:0"></span>
+        <div class="prog"><i id="calibBar"></i></div>
+      </div>
+      <div id="calibMsgs" class="msglog"><div class="hint">校准过程中的提示信息（STATUSTEXT）会显示在这里</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 电机测试 ============ -->
+  <section id="page-motor" class="page" style="display:none">
+    <div class="warn">⚠ 拆桨！电机测试仅限地面调试，确认螺旋桨已拆除、周围无人。</div>
+    <div class="card">
+      <h3>电机测试</h3>
+      <div class="field" style="max-width:380px">
+        <label>油门 <span id="mValTxt" style="color:var(--accent-hi)">10%</span></label>
+        <input type="range" id="mVal" min="0" max="30" value="10" style="width:100%">
+      </div>
+      <div class="field" style="max-width:140px">
+        <label>时长（秒）</label>
+        <input type="number" id="mTime" value="2" min="1" max="30">
+      </div>
+      <div class="actions" style="margin-top:4px">
+        <button class="motorBtn" data-need="disarmed" data-m="1">电机 1</button>
+        <button class="motorBtn" data-need="disarmed" data-m="2">电机 2</button>
+        <button class="motorBtn" data-need="disarmed" data-m="3">电机 3</button>
+        <button class="motorBtn" data-need="disarmed" data-m="4">电机 4</button>
+      </div>
+      <div class="hint" id="motorHint">已解锁（ARMED）状态下无法测试电机。</div>
+    </div>
+  </section>
+
+  <!-- ============ 文件管理（SD 卡 / 日志） ============ -->
+  <section id="page-fs" class="page" style="display:none">
+    <div class="card">
+      <h3>机载文件系统（MAVLink FTP）</h3>
+      <div class="toolbar">
+        <input type="text" id="fsPath" value="/fs/microsd" style="width:300px;font-family:var(--mono)">
+        <button id="btnFsList" data-need="conn">读取目录</button>
+        <button id="btnFsUp" class="ghost" data-need="conn">上级</button>
+        <button class="ghost fsQuick" data-p="/fs/microsd">SD 卡根目录</button>
+        <button class="ghost fsQuick" data-p="/fs/microsd/log">飞行日志</button>
+        <button class="ghost fsQuick" data-p="/log">SITL /log</button>
+      </div>
+      <div id="fsProg" style="display:none;margin-bottom:10px">
+        <span class="hint" id="fsProgTxt" style="margin-top:0">传输中…</span>
+        <div class="prog"><i id="fsProgBar"></i></div>
+      </div>
+      <div style="max-height:56vh;overflow:auto;border:1px solid var(--border-soft);border-radius:10px">
+        <table>
+          <thead><tr><th>名称</th><th style="width:110px">大小</th><th style="width:170px">操作</th></tr></thead>
+          <tbody id="fsTbody"></tbody>
+        </table>
+      </div>
+      <div id="fsEmpty" class="hint">连接飞控后点【读取目录】。飞行日志在 SD 卡的 /fs/microsd/log 下（SITL 在 /log）。</div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>上传到当前目录</h3>
+      <div class="toolbar">
+        <input type="file" id="fsUpFile" style="max-width:340px">
+        <button id="btnFsUpload" data-need="conn">上传</button>
+      </div>
+      <div class="hint" style="margin-top:0">文件将上传到上方当前路径，传输期间不要进行其他操作。</div>
+    </div>
+  </section>
+
+  <!-- ============ 固件 ============ -->
+  <section id="page-fw" class="page" style="display:none">
+    <div class="card">
+      <h3>当前固件</h3>
+      <div>固件版本：<b id="fwVer" style="font-family:var(--mono)">未连接</b></div>
+      <div class="actions">
+        <button id="btnReboot" class="danger" data-need="conn">重启飞控</button>
+        <button id="btnRebootBl" class="danger" data-need="conn">重启进 Bootloader</button>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3>固件烧录</h3>
+      <div class="hint" style="margin-bottom:8px">烧录只走 USB 串口（bootloader 不在网络上）。流程：USB 接飞控 → 点【重启进 Bootloader】（或重新上电瞬间）→ 选串口和固件 →【烧录】。<b>刷错固件会变砖，确认板型匹配。</b></div>
+      <div class="grid">
+        <div class="field"><label>串口设备（与连接页同一列表）</label><select id="flashDev"></select></div>
+        <div class="field" style="max-width:340px"><label>固件文件（.px4）</label>
+          <input type="file" id="fwFile" accept=".px4"></div>
+        <div class="field inline"><input type="checkbox" id="fwForce"><label for="fwForce">板型不匹配也强制烧录（危险）</label></div>
+      </div>
+      <div class="actions">
+        <button id="btnFlash" class="danger">烧录</button>
+        <div id="flashProg" class="hint" style="align-self:center"></div>
+      </div>
+    </div>
+  </section>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---- 全局状态 ----
+let S = {connected: false, info: null, armed: false};  // 最近一次 /api/status
+let lastOp = null;          // 上一帧的 op，用于检测操作结束
+let connecting = false;     // 连接阻塞调用进行中
+let params = {}, meta = {}; // 参数与元数据
+let showLimit = 200;        // 参数表渲染上限
+let impDiff = [];           // 导入 diff 结果
+let fsEntries = [];         // 当前目录条目
+let lastDlKey = null;       // 已消费的后台下载 key
+let lastDlErr = "";         // 已提示过的下载错误
+let dlPrimed = false;       // 首次轮询是否已采用服务端 fs_dl 现状
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function toast(msg, ok = true) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.className = ok ? "ok" : "err";
+  t.style.display = "block";
+  clearTimeout(t._tm);
+  t._tm = setTimeout(() => t.style.display = "none", 4000);
+}
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {})
+  });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "未知错误");
+  return j;
+}
+
+async function apiGet(path) {
+  const j = await (await fetch(path)).json();
+  if (!j.ok) throw new Error(j.error || "未知错误");
+  return j;
+}
+
+// ---- 标签页 ----
+const PAGES = ["conn", "param", "set", "calib", "motor", "fs", "fw"];
+function switchTab(n) {
+  PAGES.forEach(k => {
+    $("tab-" + k).classList.toggle("active", k === n);
+    $("page-" + k).style.display = k === n ? "" : "none";
+  });
+}
+PAGES.forEach(k => $("tab-" + k).onclick = () => switchTab(k));
+
+// ---- 连接 / 状态轮询 ----
+async function loadPorts() {
+  try {
+    const j = await apiGet("/api/ports");
+    const devs = j.serials || [];
+    $("serDev").innerHTML = devs.length
+      ? devs.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join("")
+      : '<option value="">（未发现串口）</option>';
+    $("flashDev").innerHTML = $("serDev").innerHTML;  // 烧录页共用串口列表
+    $("nicList").innerHTML = (j.nics || []).length
+      ? j.nics.map(n => `<div>${esc(n.name)} — ${esc(n.ip)}</div>`).join("")
+      : "<div>（未发现网卡）</div>";
+  } catch (e) {
+    $("serDev").innerHTML = '<option value="">（获取失败）</option>';
+    $("nicList").innerHTML = "<div>（获取失败）</div>";
+  }
+}
+
+async function connectUdp() {
+  const b = $("btnConnUdp");
+  connecting = true; b.disabled = true; b.textContent = "连接中…";
+  try {
+    const j = await api("/api/connect", {
+      channel: "udp",
+      host: $("udpHost").value.trim(),
+      port: +$("udpPort").value,
+      bind_port: +$("udpBind").value
+    });
+    toast(`已连接：sysid ${j.info.sysid}`);
+    poll();
+  } catch (e) { toast(e.message, false); }
+  connecting = false; b.disabled = false; b.textContent = "连接";
+}
+
+async function connectSer() {
+  const dev = $("serDev").value;
+  if (!dev) return toast("请选择串口设备", false);
+  const b = $("btnConnSer");
+  connecting = true; b.disabled = true; b.textContent = "连接中…";
+  try {
+    const j = await api("/api/connect", {channel: "serial", dev, baud: +$("serBaud").value});
+    toast(`已连接：sysid ${j.info.sysid}`);
+    poll();
+  } catch (e) { toast(e.message, false); }
+  connecting = false; b.disabled = false; b.textContent = "连接";
+}
+
+async function doDisconnect() {
+  try {
+    const j = await api("/api/disconnect");
+    toast(j.msg || "已断开");
+    poll();
+  } catch (e) { toast(e.message, false); }
+}
+
+// 更新连接状态相关的所有 UI 门控
+function updateGates(op) {
+  const c = S.connected, a = S.armed, busy = !!op;
+  document.querySelectorAll("[data-need=conn]").forEach(el => el.disabled = !c || busy);
+  document.querySelectorAll("[data-need=disarmed]").forEach(el => el.disabled = !c || a || busy);
+  $("armedBadge").style.display = c && a ? "" : "none";
+  $("armed2").style.display = c && a ? "" : "none";
+  if (!connecting) { $("btnConnUdp").disabled = c; $("btnConnSer").disabled = c; }
+  $("connInfo").style.display = c ? "" : "none";
+  $("motorHint").textContent = !c ? "未连接飞控。" : (a ? "已解锁（ARMED）状态下无法测试电机。" : "点击电机按钮前会再次确认。");
+  if (c && S.info) {
+    const i = S.info;
+    $("connDot").className = "dot on";
+    $("connPill").className = "pill on";
+    $("connTxt").textContent = `已连接 · sysid ${i.sysid} · ${i.firmware || "固件未知"}`;
+    $("connInfoTxt").innerHTML =
+      `sysid <b>${esc(i.sysid)}</b> · compid ${esc(i.compid)} · 通道 ${esc(i.channel || "")}` +
+      ` · 固件 <b>${esc(i.firmware || "未知")}</b> · VID/PID ${esc(i.vendor_id ?? "?")} / ${esc(i.product_id ?? "?")}`;
+    $("fwVer").textContent = i.firmware || "未知";
+  } else {
+    $("connDot").className = "dot";
+    $("connPill").className = "pill";
+    $("connTxt").textContent = "未连接";
+    $("fwVer").textContent = "未连接";
+  }
+}
+
+// op 进度（参数拉取 / 校准）与消息日志
+function updateOp(op, msgs) {
+  const isP = op && op.op === "params";
+  $("pProg").style.display = isP ? "" : "none";
+  if (isP) {
+    $("pProgBar").style.width = (op.total ? Math.min(100, 100 * op.progress / op.total) : 0) + "%";
+    $("pProgTxt").textContent = op.msg || `拉取参数 ${op.progress}/${op.total}`;
+  }
+  const isC = op && typeof op.op === "string" && op.op.startsWith("calib");
+  $("calibProg").style.display = isC ? "" : "none";
+  if (isC) {
+    $("calibBar").style.width = (op.total ? Math.min(100, 100 * op.progress / op.total) : 0) + "%";
+    $("calibProgTxt").textContent = op.msg || `${op.op} ${op.progress}/${op.total}`;
+  }
+  const isF = op && (op.op === "download" || op.op === "upload");
+  $("fsProg").style.display = isF ? "" : "none";
+  if (isF) {
+    $("fsProgBar").style.width = (op.total ? Math.min(100, 100 * op.progress / op.total) : 0) + "%";
+    $("fsProgTxt").textContent = op.msg || `${op.op} ${op.progress}/${op.total}`;
+  }
+  if (msgs && msgs.length) {
+    $("calibMsgs").innerHTML = msgs.map(m =>
+      `<div>[${esc(m.t)}] ${esc(m.text)}</div>`).join("");
+    $("calibMsgs").scrollTop = $("calibMsgs").scrollHeight;
+  }
+}
+
+async function poll() {
+  try {
+    const j = await apiGet("/api/status");
+    S.connected = !!j.connected;
+    S.info = j.info || null;
+    S.armed = !!j.armed;
+    // 服务端的 op 恒为 dict，空闲时是 {op:null,...}——这里归一化成"无操作=null"
+    const op = (j.op && j.op.op) ? j.op : null;
+    updateGates(op);
+    updateOp(op, j.messages);
+    updateFlash(j.flash);
+    if (lastOp && !op) {   // 后台操作刚结束
+      toast(lastOp.msg ? String(lastOp.msg) : `操作 ${lastOp.op} 已结束`);
+      if (lastOp.op === "params") loadParams();
+      if (lastOp.op === "upload") fsRefresh();
+    }
+    lastOp = op;
+    // 后台文件下载完成 → 触发浏览器保存
+    const dl = j.fs_dl;
+    if (dl) {
+      if (!dlPrimed) {           // 页面首次轮询：采用服务端现状，不重复弹下载
+        dlPrimed = true;
+        lastDlKey = dl.key;
+        lastDlErr = dl.error || "";
+      } else {
+        if (dl.key && dl.key !== lastDlKey) {
+          lastDlKey = dl.key;
+          toast(`下载完成：${dl.name}`);
+          const a = document.createElement("a");
+          a.href = "/api/fs/get?key=" + dl.key;
+          a.download = dl.name || "";
+          document.body.appendChild(a); a.click(); a.remove();
+        }
+        if (dl.error && dl.error !== lastDlErr) {
+          lastDlErr = dl.error;
+          toast("下载失败：" + dl.error, false);
+        }
+      }
+    }
+  } catch (e) { /* 轮询失败静默，下秒重试 */ }
+}
+
+// ---- 参数页 ----
+async function loadParams() {
+  try {
+    const j = await apiGet("/api/params");
+    params = j.params || {};
+    meta = j.meta || {};
+    // 分组下拉
+    const groups = [...new Set(Object.values(meta).map(m => m.group || ""))].sort();
+    const cur = $("pGroup").value;
+    $("pGroup").innerHTML = '<option value="">全部分组</option>' +
+      groups.filter(g => g).map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+    $("pGroup").value = groups.includes(cur) ? cur : "";
+    $("pGroup").style.display = groups.length ? "" : "none";
+    renderParams();
+  } catch (e) { toast(e.message, false); }
+}
+
+function rowHtml(n, p, m) {
+  const def = m ? m.default : undefined;
+  const diff = m && def !== undefined && +p.value !== +def;
+  const range = m && (m.min !== undefined || m.max !== undefined)
+    ? `${m.min ?? ""} ~ ${m.max ?? ""}` : "-";
+  return `<tr class="${diff ? "diffrow" : ""}">` +
+    `<td class="pname">${esc(n)}` +
+      (m && m.reboot_required ? ' <span class="tag" title="修改后需重启生效">🔁</span>' : "") +
+      (m && m.volatile ? ' <span class="tag" title="易失参数，重启后不保留">⚡</span>' : "") +
+    `</td>` +
+    `<td><input class="pval" type="text" data-name="${esc(n)}" value="${esc(p.value)}"></td>` +
+    `<td>${def !== undefined ? esc(def) : "-"}</td>` +
+    `<td title="${esc(m ? (m.long_desc || "") : "")}">${esc(m ? (m.short_desc || "-") : "-")}</td>` +
+    `<td>${esc(m && m.unit ? m.unit : "-")}</td>` +
+    `<td>${esc(range)}</td>` +
+    `<td>${m && m.reboot_required ? "🔁" : ""}</td>` +
+  `</tr>`;
+}
+
+function renderParams() {
+  const names = Object.keys(params);
+  if (!names.length) {
+    $("pEmpty").style.display = "";
+    $("pTableWrap").style.display = "none";
+    $("pCount").textContent = "";
+    return;
+  }
+  $("pEmpty").style.display = "none";
+  $("pTableWrap").style.display = "";
+  const q = $("pSearch").value.trim().toLowerCase();
+  const g = $("pGroup").value;
+  const rows = [];
+  let matched = 0;
+  for (const n of names) {
+    const p = params[n], m = meta[n];
+    if (g && (!m || (m.group || "") !== g)) continue;
+    if (q) {
+      const hay = (n + " " + (m ? (m.short_desc || "") + " " + (m.long_desc || "") : "")).toLowerCase();
+      if (!hay.includes(q)) continue;
+    }
+    matched++;
+    if (rows.length < showLimit) rows.push(rowHtml(n, p, m));
+  }
+  $("pTbody").innerHTML = rows.join("");
+  $("pCount").textContent = `共 ${names.length} 项，匹配 ${matched} 项，显示 ${rows.length} 项`;
+  $("btnShowAll").style.display = matched > rows.length ? "" : "none";
+  $("btnShowAll").textContent = `显示全部 ${matched} 条（当前 ${rows.length} 条，渲染较慢）`;
+}
+
+function parseVal(raw) {
+  const s = String(raw).trim();
+  if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+  const f = parseFloat(s);
+  if (isNaN(f)) throw new Error(`无效数值：${s}`);
+  return f;
+}
+
+async function commitParam(el) {
+  const name = el.dataset.name;
+  if (!(name in params)) return;
+  let v;
+  try { v = parseVal(el.value); }
+  catch (e) { toast(e.message, false); el.value = params[name].value; return; }
+  if (+v === +params[name].value) { el.value = params[name].value; return; }
+  try {
+    const j = await api("/api/params/set", {name, value: v});
+    params[name].value = v;
+    toast(j.msg || `${name} 已设置`);
+    renderParams();  // 刷新"与默认值不同"高亮
+  } catch (e) {
+    toast(e.message, false);
+    el.value = params[name].value;  // 失败还原
+  }
+}
+
+$("pTbody").addEventListener("change", e => {
+  const el = e.target.closest("input.pval");
+  if (el) commitParam(el);
+});
+$("pTbody").addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const el = e.target.closest("input.pval");
+    if (el) { e.preventDefault(); el.blur(); }
+  }
+});
+$("pSearch").oninput = () => { showLimit = 200; renderParams(); };
+$("pGroup").onchange = () => { showLimit = 200; renderParams(); };
+$("btnShowAll").onclick = () => { showLimit = Infinity; renderParams(); };
+
+async function doPull() {
+  try {
+    const j = await api("/api/params/refresh");
+    toast(j.msg || "开始拉取参数");
+  } catch (e) { toast(e.message, false); }
+}
+
+// ---- 参数导入 ----
+function doImportFile(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      if (!Object.keys(params).length) throw new Error("尚未拉取参数，无法对比，请先点【拉取参数】");
+      const j = JSON.parse(rd.result);
+      if (typeof j !== "object" || !j) throw new Error("不是 JSON 对象");
+      const map = (j.params && typeof j.params === "object") ? j.params : j;
+      impDiff = [];
+      let unknown = 0, same = 0;
+      for (const [k, v] of Object.entries(map)) {
+        if (!(k in params)) { unknown++; continue; }
+        if (+params[k].value !== +v) impDiff.push({name: k, old: params[k].value, neu: v});
+        else same++;
+      }
+      if (!impDiff.length) {
+        toast(`无差异：${same} 项相同${unknown ? `，${unknown} 项本地不存在已忽略` : ""}`);
+        return;
+      }
+      $("impList").innerHTML =
+        `<div class="hint" style="margin:0 0 6px">共 ${impDiff.length} 项将修改` +
+        `${same ? `，${same} 项相同跳过` : ""}${unknown ? `，${unknown} 项本地不存在已忽略` : ""}</div>` +
+        impDiff.map(d =>
+          `<div class="diffline">${esc(d.name)}: ${esc(d.old)} → <b>${esc(d.neu)}</b></div>`).join("");
+      $("impStat").textContent = "";
+      $("impPrev").style.display = "";
+    } catch (e) { toast("导入失败：" + e.message, false); }
+  };
+  rd.readAsText(file);
+}
+
+$("btnImport").onclick = () => { $("impFile").value = ""; $("impFile").click(); };
+$("impFile").onchange = e => { if (e.target.files[0]) doImportFile(e.target.files[0]); };
+$("btnImpCancel").onclick = () => { $("impPrev").style.display = "none"; impDiff = []; };
+$("btnImpOk").onclick = async () => {
+  $("btnImpOk").disabled = true;
+  let done = 0, fail = 0;
+  for (const d of impDiff) {
+    $("impStat").textContent = `写入 ${++done}/${impDiff.length} ${d.name} …`;
+    try {
+      await api("/api/params/set", {name: d.name, value: parseVal(d.neu)});
+      params[d.name].value = parseVal(d.neu);
+    } catch (e) { fail++; }
+  }
+  $("impStat").textContent = fail ? `完成，${fail} 项失败` : "全部写入完成";
+  $("btnImpOk").disabled = false;
+  toast(fail ? `导入完成，${fail} 项失败` : "导入完成", !fail);
+  renderParams();
+  if (!fail) { $("impPrev").style.display = "none"; impDiff = []; }
+};
+
+// ---- 设置：定位配置（EKF2，用户自定义） ----
+// 列出定位源相关参数与中文注释；不预置任何值，用户自己填。
+const EKF_PARAMS = [
+  ["EKF2_GPS_CTRL", "GNSS（GPS/RTK）融合。位掩码：1=经纬度，2=高度，4=速度，8=航向；相加组合，0=完全关闭。室外常用 7，室内无 GPS 设 0。"],
+  ["EKF2_HGT_REF", "高度参考源：0=气压计，1=GPS，2=测距仪，3=视觉（EV）。室外一般用气压计 0。"],
+  ["EKF2_BARO_CTRL", "气压计辅助：0=关，1=开。室内外通常都保持开。"],
+  ["EKF2_RNG_CTRL", "测距仪（激光/超声）高度辅助：0=关，1=条件模式（低空可信时融合），2=始终融合。"],
+  ["EKF2_MAG_TYPE", "罗盘融合方式：0=自动（自动切换 3D/航向），1=仅磁航向（不学 3D 磁场，室内磁干扰应急用），5=完全禁用罗盘。"],
+  ["EKF2_EV_CTRL", "外部定位（EV：UWB/视觉动捕/VIO）融合。位掩码：1=水平位置，2=垂直位置，4=速度，8=航向；相加组合，0=关闭。UWB 定位置 1，VIO 位置+高度置 3。"],
+  ["EKF2_YAW0_INIT", "无航向源时上电把航向初始化为 0（本固件补丁参数，官方固件无）。1=开：需配合摆放纪律——上电时机头对准定位坐标系 X 轴。"],
+];
+
+function renderEkf() {
+  if (!Object.keys(params).length) {
+    $("ekfEmpty").style.display = "";
+    $("ekfTableWrap").style.display = "none";
+    return;
+  }
+  $("ekfTbody").innerHTML = EKF_PARAMS.map(([name, desc]) => {
+    const exists = name in params;
+    const cur = exists ? params[name].value : "—";
+    return `<tr>` +
+      `<td class="pname">${name}${exists ? "" : ' <span class="tag" title="本固件无此参数，不可写入">⚠</span>'}</td>` +
+      `<td class="pname">${esc(cur)}</td>` +
+      `<td><input class="pval ekfVal" type="text" data-name="${esc(name)}" value="${esc(cur)}" ${exists ? "" : "disabled"}></td>` +
+      `<td style="font-size:12.5px;color:var(--muted)">${esc(desc)}</td>` +
+    `</tr>`;
+  }).join("");
+  $("ekfEmpty").style.display = "none";
+  $("ekfTableWrap").style.display = "";
+}
+
+$("btnEkfRead").onclick = renderEkf;
+
+$("btnEkfWrite").onclick = async () => {
+  if (!Object.keys(params).length) return toast("请先到【参数】页拉取一次参数", false);
+  const rows = [...document.querySelectorAll(".ekfVal")];
+  if (!rows.length) return toast("请先点【刷新当前值】", false);
+  const todo = [];
+  for (const el of rows) {
+    if (el.disabled) continue;
+    const name = el.dataset.name;
+    let v;
+    try { v = parseVal(el.value); }
+    catch (e) { return toast(`${name}: ${e.message}`, false); }
+    if (+v !== +params[name].value) todo.push([name, v]);
+  }
+  if (!todo.length) return toast("新值与当前值一致，无需写入");
+  if (!confirm(`将写入 ${todo.length} 个参数：\n${todo.map(([n, v]) => `${n} = ${v}`).join("\n")}\n\nEKF2 参数需重启生效。确认？`)) return;
+  const log = $("presetLog");
+  log.style.display = "";
+  log.innerHTML = `<div class="diffline">—— 写入定位参数 ——</div>`;
+  let fail = 0;
+  for (const [name, value] of todo) {
+    try {
+      await api("/api/params/set", {name, value});
+      params[name].value = value;
+      log.innerHTML += `<div class="diffline">✓ ${name} = ${value}</div>`;
+    } catch (e) {
+      fail++;
+      log.innerHTML += `<div class="diffline">✗ ${name} 写入失败：${esc(e.message)}</div>`;
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+  renderEkf();  // 刷新"当前值"列
+  toast(`写入完成${fail ? `，失败 ${fail} 项` : ""}。请重启飞控。`, !fail);
+};
+
+// ---- 设置：安全机制 ----
+const SAFETY = [
+  ["gfAction", "GF_ACTION"], ["gfHor", "GF_MAX_HOR_DIST"], ["gfVer", "GF_MAX_VER_DIST"],
+  ["rtlAlt", "RTL_RETURN_ALT"], ["batAct", "COM_LOW_BAT_ACT"], ["disarmLand", "COM_DISARM_LAND"],
+];
+$("btnSfRead").onclick = () => {
+  if (!Object.keys(params).length) return toast("请先到【参数】页拉取一次参数", false);
+  const miss = [];
+  for (const [id, name] of SAFETY) {
+    if (name in params) $(id).value = params[name].value;
+    else miss.push(name);
+  }
+  toast(miss.length ? `已读取，${miss.length} 项本固件不存在` : "已读取当前安全配置", !miss.length);
+};
+$("btnSfWrite").onclick = async () => {
+  if (!Object.keys(params).length) return toast("请先到【参数】页拉取一次参数", false);
+  if (!confirm("确认写入以上安全配置？")) return;
+  let fail = 0, skip = 0;
+  for (const [id, name] of SAFETY) {
+    if (!(name in params)) { skip++; continue; }
+    let v;
+    try { v = parseVal($(id).value); }
+    catch (e) { fail++; toast(`${name}: ${e.message}`, false); continue; }
+    try {
+      await api("/api/params/set", {name, value: v});
+      params[name].value = v;
+    } catch (e) {
+      fail++;
+      toast(`${name} 写入失败：${e.message}`, false);
+    }
+  }
+  toast(`安全配置写入完成${skip ? `，跳过 ${skip} 项` : ""}${fail ? `，失败 ${fail} 项` : ""}`, !fail);
+};
+
+// ---- 校准 ----
+async function startCalib(what, label) {
+  if (!confirm(`确认开始「${label}」校准？\n请确保飞机按提示摆放且已上锁（DISARMED）。`)) return;
+  try {
+    const j = await api("/api/calibrate", {what});
+    toast(j.msg || "校准已开始，留意下方提示");
+    switchTab("calib");
+  } catch (e) { toast(e.message, false); }
+}
+document.querySelectorAll(".calibBtn").forEach(b =>
+  b.onclick = () => startCalib(b.dataset.what, b.parentElement.querySelector("h3").textContent));
+
+// ---- 电机测试 ----
+$("mVal").oninput = () => $("mValTxt").textContent = $("mVal").value + "%";
+async function motorTest(n) {
+  const v = +$("mVal").value, t = +$("mTime").value;
+  if (!confirm(`确认测试电机 ${n}？\n油门 ${v}% · 时长 ${t}s\n\n确认螺旋桨已拆除！`)) return;
+  try {
+    const j = await api("/api/motor_test", {motor: n, value: v / 100, timeout_s: t});
+    toast(j.msg || `电机 ${n} 测试指令已发送`);
+  } catch (e) { toast(e.message, false); }
+}
+document.querySelectorAll(".motorBtn").forEach(b =>
+  b.onclick = () => motorTest(+b.dataset.m));
+
+// ---- 文件管理 ----
+function fmtSize(n) {
+  if (n == null) return "-";
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(1) + " KB";
+  return (n / 1048576).toFixed(2) + " MB";
+}
+
+async function fsRefresh() { await fsList($("fsPath").value.trim() || "/"); }
+
+async function fsList(path) {
+  try {
+    const j = await api("/api/fs/list", {path});
+    $("fsPath").value = j.path;
+    fsEntries = j.entries || [];
+    renderFs();
+  } catch (e) { toast(e.message, false); }
+}
+
+function renderFs() {
+  const dirs = fsEntries.filter(e => e.is_dir).sort((a, b) => a.name.localeCompare(b.name));
+  const files = fsEntries.filter(e => !e.is_dir).sort((a, b) => a.name.localeCompare(b.name));
+  $("fsTbody").innerHTML = [...dirs, ...files].map(e => {
+    const icon = e.is_dir ? "📁" : (/\.ulg$/i.test(e.name) ? "📊" : "📄");
+    const nm = e.is_dir
+      ? `<a href="#" class="fsDir" data-n="${esc(e.name)}" style="color:var(--accent-hi);text-decoration:none">${icon} ${esc(e.name)}</a>`
+      : `${icon} ${esc(e.name)}`;
+    const ops = e.is_dir ? "" :
+      `<button class="ghost fsDl" data-n="${esc(e.name)}" style="padding:3px 10px;font-size:12px">下载</button> ` +
+      `<button class="danger fsDel" data-n="${esc(e.name)}" style="padding:3px 10px;font-size:12px">删除</button>`;
+    return `<tr><td class="pname">${nm}</td><td>${e.is_dir ? "-" : fmtSize(e.size)}</td><td>${ops}</td></tr>`;
+  }).join("");
+  $("fsEmpty").style.display = fsEntries.length ? "none" : "";
+}
+
+function fsJoin(name) {
+  const p = $("fsPath").value.trim().replace(/\/+$/, "");
+  return (p || "") + "/" + name;
+}
+
+$("fsTbody").addEventListener("click", async e => {
+  const dir = e.target.closest(".fsDir");
+  if (dir) { e.preventDefault(); fsList(fsJoin(dir.dataset.n)); return; }
+  const dl = e.target.closest(".fsDl");
+  if (dl) {
+    try {
+      const j = await api("/api/fs/download", {path: fsJoin(dl.dataset.n)});
+      toast(j.msg || "开始下载");
+    } catch (err) { toast(err.message, false); }
+    return;
+  }
+  const del = e.target.closest(".fsDel");
+  if (del) {
+    const p = fsJoin(del.dataset.n);
+    if (!confirm(`确认删除机载文件 ${p}？不可恢复。`)) return;
+    try {
+      const j = await api("/api/fs/delete", {path: p});
+      toast(j.msg || "已删除");
+      fsRefresh();
+    } catch (err) { toast(err.message, false); }
+  }
+});
+$("btnFsList").onclick = fsRefresh;
+$("btnFsUp").onclick = () => {
+  const p = $("fsPath").value.trim().replace(/\/+$/, "");
+  const i = p.lastIndexOf("/");
+  fsList(i > 0 ? p.slice(0, i) : "/");
+};
+document.querySelectorAll(".fsQuick").forEach(b => b.onclick = () => fsList(b.dataset.p));
+$("btnFsUpload").onclick = async () => {
+  const file = $("fsUpFile").files[0];
+  if (!file) return toast("请先选择文件", false);
+  const target = fsJoin(file.name);
+  if (!confirm(`确认上传 ${file.name}（${fmtSize(file.size)}）到 ${target}？`)) return;
+  try {
+    const body = await file.arrayBuffer();
+    const r = await fetch("/api/fs/upload", {
+      method: "POST",
+      headers: {"Content-Type": "application/octet-stream", "X-Path": target},
+      body
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "未知错误");
+    toast(j.msg);
+  } catch (e) { toast(e.message, false); }
+};
+
+// ---- 固件 ----
+$("btnReboot").onclick = async () => {
+  if (!confirm("确认重启飞控？连接将断开，需重新连接。")) return;
+  try { const j = await api("/api/reboot", {bootloader: false}); toast(j.msg || "重启指令已发送"); poll(); }
+  catch (e) { toast(e.message, false); }
+};
+$("btnRebootBl").onclick = async () => {
+  if (!confirm("确认重启进 Bootloader？连接将断开。")) return;
+  try { const j = await api("/api/reboot", {bootloader: true}); toast(j.msg || "重启指令已发送"); poll(); }
+  catch (e) { toast(e.message, false); }
+};
+
+// ---- 固件烧录 ----
+let flashBusy = false;
+function updateFlash(f) {
+  if (!f) return;
+  flashBusy = !!f.running;
+  $("btnFlash").disabled = flashBusy;
+  $("flashProg").textContent = f.msg ? `${f.msg}（${f.pct || 0}%）` : "";
+  if (f.msg && /完成|失败/.test(f.msg)) toast(f.msg, !/失败/.test(f.msg));
+}
+
+$("btnFlash").onclick = async () => {
+  const dev = $("flashDev").value;
+  const file = $("fwFile").files[0];
+  if (!dev) return toast("请选择串口设备", false);
+  if (!file) return toast("请选择 .px4 固件文件", false);
+  if (!confirm(`确认向 ${dev} 烧录 ${file.name}？\n\n刷错固件会变砖！烧录期间勿断电、勿拔线。`)) return;
+  try {
+    const body = await file.arrayBuffer();
+    const r = await fetch("/api/firmware/flash", {
+      method: "POST",
+      headers: {"Content-Type": "application/octet-stream",
+                "X-Flash-Dev": dev, "X-Flash-Force": $("fwForce").checked ? "1" : "0"},
+      body
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "未知错误");
+    toast(j.msg);
+  } catch (e) { toast(e.message, false); }
+};
+
+// ---- 事件绑定与初始化 ----
+$("btnConnUdp").onclick = connectUdp;
+$("btnConnSer").onclick = connectSer;
+$("btnDisc").onclick = doDisconnect;
+$("btnPorts").onclick = loadPorts;
+$("btnPull").onclick = doPull;
+
+loadPorts();
+loadParams();          // 未拉取时后端返回空 params，显示提示
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>
