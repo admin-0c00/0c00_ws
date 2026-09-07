@@ -118,6 +118,8 @@ python3 ~/0c00_ws/swarm_ws/src/bringup/scripts/demo_swarm_square.py  # 三机（
 | --- | --- |
 | Web 地面站使用说明 | https://0c00.com/docs/SwarmCore/ground-station/ |
 | swarm_api 框架教程 / API 参考 / demo 教程 | 见官网文档中心 https://0c00.com |
+| swarm_api 结构化 API 参考（仓库内） | `docs/SWARM_API_REFERENCE.md` |
+| AI Agent 接入指南（DEMO_RESULT 判定约定） | `AGENTS.md` |
 | 更新维护记录 | `docs/MAINTENANCE.md` |
 
 ## 目录结构
