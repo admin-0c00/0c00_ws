@@ -15,4 +15,8 @@ bmi270 -s -b 2 -R 0 start
 # Internal baro
 dps310 -I start -a 118
 
-ist8310 -I -R 2 start
+# Internal mag (IST8310 on I2C2) disabled: mounted near motor/ESC current => field disturbed in flight
+# ist8310 -I -R 2 start
+
+# External mag (QMC5883L on GPS port, external I2C1 @ 0x0D) — rotation calibrated via SENS_MAG_AUTOROT
+qmc5883l -X -a 0x0D -R 0 start

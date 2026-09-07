@@ -612,6 +612,8 @@ private:
 
 		(ParamExtInt<px4::params::EKF2_HGT_REF>) _param_ekf2_hgt_ref,    ///< selects the primary source for height data
 
+		(ParamExtInt<px4::params::EKF2_YAW0_INIT>) _param_ekf2_yaw0_init, ///< initialize yaw to zero after tilt alignment (no yaw aiding)
+
 		(ParamExtInt<px4::params::EKF2_NOAID_TOUT>)
 		_param_ekf2_noaid_tout,	///< maximum lapsed time from last fusion of measurements that constrain drift before the EKF will report the horizontal nav solution invalid (uSec)
 

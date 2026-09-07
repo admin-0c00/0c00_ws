@@ -73,6 +73,17 @@ void Ekf::controlFusionModes(const imuSample &imu_delayed)
 		if (getTiltVariance() < sq(math::radians(3.f))) {
 			_control_status.flags.tilt_align = true;
 
+			// No yaw aiding source available: initialize yaw to zero so that
+			// position/velocity aiding can start. The heading at power-on
+			// defines the local frame X axis (e.g. indoor UWB operation).
+			if (_params.yaw_init_zero && !_control_status.flags.yaw_align) {
+				resetQuatStateYaw(0.f, sq(math::radians(5.f)));
+				_control_status.flags.yaw_align = true;
+
+				ECL_INFO("%llu: EKF yaw initialized to 0 (EKF2_YAW0_INIT)",
+					 (unsigned long long)imu_delayed.time_us);
+			}
+
 			// send alignment status message to the console
 			const char *height_source = "unknown";
 

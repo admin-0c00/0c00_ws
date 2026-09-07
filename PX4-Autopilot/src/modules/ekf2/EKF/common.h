@@ -263,6 +263,10 @@ struct parameters {
 
 	// measurement source control
 	int32_t height_sensor_ref{static_cast<int32_t>(HeightSensor::BARO)};
+
+	// initialize yaw to zero after tilt alignment when no yaw aiding source is used
+	// (heading at power-on defines the local frame X axis, e.g. indoor UWB operation)
+	int32_t yaw_init_zero{0};
 	int32_t position_sensor_ref{static_cast<int32_t>(PositionSensor::GNSS)};
 
 	float delay_max_ms{110.f};              ///< maximum time delay of all the aiding sensors. Sets the size of the observation buffers. (mSec)

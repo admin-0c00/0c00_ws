@@ -417,6 +417,21 @@ parameters:
         5: None
       default: 0
       reboot_required: true
+    EKF2_YAW0_INIT:
+      description:
+        short: Initialize heading to zero when no yaw aiding source is used
+        long: When enabled, the EKF declares the yaw angle aligned and resets
+          it to zero as soon as the tilt alignment is complete, without
+          requiring a magnetometer or any other yaw aiding source. The heading
+          of the vehicle at power-on then defines the direction of the local
+          frame X axis and the yaw estimate is maintained by gyro integration
+          alone (subject to slow drift). Intended for indoor operation with an
+          external position source (e.g. UWB) whose frame is aligned with the
+          vehicle heading at startup. Only use with magnetometer fusion
+          disabled (EKF2_MAG_TYPE = None).
+      type: boolean
+      default: false
+      reboot_required: true
     EKF2_MAG_ACCLIM:
       description:
         short: Horizontal acceleration threshold used for heading observability check
