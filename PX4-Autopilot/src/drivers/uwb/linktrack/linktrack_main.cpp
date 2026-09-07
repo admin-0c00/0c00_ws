@@ -51,6 +51,7 @@
 #include <px4_platform_common/module_params.h>
 #include <px4_platform_common/posix.h>
 #include <drivers/drv_hrt.h>
+#include <lib/mathlib/mathlib.h>
 #include <lib/parameters/param.h>
 #include <uORB/Publication.hpp>
 #include <uORB/topics/vehicle_odometry.h>
@@ -121,16 +122,32 @@ private:
 	// statistics
 	uint32_t _frame_count{0};
 	uint32_t _checksum_errors{0};
+	uint32_t _step_rejects{0};
 	uint32_t _nmea_count{0};
 	hrt_abstime _last_frame_time{0};
 	hrt_abstime _last_nmea_warn{0};
 	uint8_t _tag_id{0};
 	float _voltage{0.0f};
 
+	// glitch rejection state (LT_MAX_STEP)
+	float _last_rx_pos[2] {};
+	float _last_acc_pos[2] {};
+	uint32_t _resync_count{0};
+	bool _have_acc_pos{false};
+
+	// first-order low-pass state (LT_LPF_TAU)
+	bool _lpf_init{false};
+	float _lpf_pos[2] {};
+	float _lpf_vel[2] {};
+
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::LT_TF_ROT>) _param_tf_rot,
+		(ParamFloat<px4::params::LT_TF_YAW>) _param_tf_yaw,
 		(ParamFloat<px4::params::LT_COV_POS>) _param_cov_pos,
-		(ParamFloat<px4::params::LT_COV_VEL>) _param_cov_vel
+		(ParamFloat<px4::params::LT_COV_VEL>) _param_cov_vel,
+		(ParamFloat<px4::params::LT_COV_VEL_Z>) _param_cov_vel_z,
+		(ParamFloat<px4::params::LT_MAX_STEP>) _param_max_step,
+		(ParamFloat<px4::params::LT_LPF_TAU>) _param_lpf_tau
 	)
 };
 
@@ -293,6 +310,26 @@ void LinkTrack::handle_frame()
 		odom.velocity[2] = -vel_enu[2];
 	}
 
+	// yaw alignment: rotate anchor frame into the EKF local frame (mag-north
+	// based). LT_TF_YAW is the heading QGC shows when the vehicle nose points
+	// along the anchor X axis.
+	const float yaw_offset = math::radians(_param_tf_yaw.get());
+
+	if (fabsf(yaw_offset) > 1e-6f) {
+		const float c = cosf(yaw_offset);
+		const float s = sinf(yaw_offset);
+
+		const float px = odom.position[0];
+		const float py = odom.position[1];
+		odom.position[0] = c * px - s * py;
+		odom.position[1] = s * px + c * py;
+
+		const float vx = odom.velocity[0];
+		const float vy = odom.velocity[1];
+		odom.velocity[0] = c * vx - s * vy;
+		odom.velocity[1] = s * vx + c * vy;
+	}
+
 	odom.pose_frame = vehicle_odometry_s::POSE_FRAME_NED;
 	odom.velocity_frame = vehicle_odometry_s::VELOCITY_FRAME_NED;
 
@@ -303,6 +340,10 @@ void LinkTrack::handle_frame()
 		odom.position_variance[i] = (eop > 0.0f) ? (eop * eop) : _param_cov_pos.get();
 		odom.velocity_variance[i] = _param_cov_vel.get();
 	}
+
+	// vertical velocity from the tag is unreliable (MATH_MODEL2 z is the weak
+	// axis); report a huge variance so the EKF effectively ignores it
+	odom.velocity_variance[2] = _param_cov_vel_z.get();
 
 	odom.q[0] = NAN;
 	odom.q[1] = NAN;
@@ -315,6 +356,76 @@ void LinkTrack::handle_frame()
 	odom.orientation_variance[1] = NAN;
 	odom.orientation_variance[2] = NAN;
 	odom.reset_counter = 0;
+
+	// glitch rejection (LT_MAX_STEP): drop frames whose horizontal displacement
+	// from the last accepted frame is physically impossible (EMI glitches can
+	// teleport the solution by meters in one 100 Hz frame). If the new position
+	// persists for 10 consecutive self-consistent frames, resync and accept it.
+	const float max_step = _param_max_step.get();
+
+	if (max_step > 0.f) {
+		const float drx = odom.position[0] - _last_rx_pos[0];
+		const float dry = odom.position[1] - _last_rx_pos[1];
+		const bool consistent_with_prev = (drx * drx + dry * dry) <= (max_step * max_step);
+		_resync_count = consistent_with_prev ? (_resync_count + 1) : 0;
+
+		_last_rx_pos[0] = odom.position[0];
+		_last_rx_pos[1] = odom.position[1];
+
+		if (!_have_acc_pos) {
+			// first frame ever: accept as reference
+			_have_acc_pos = true;
+			_last_acc_pos[0] = odom.position[0];
+			_last_acc_pos[1] = odom.position[1];
+
+		} else {
+			const float dax = odom.position[0] - _last_acc_pos[0];
+			const float day = odom.position[1] - _last_acc_pos[1];
+
+			if ((dax * dax + day * day) > (max_step * max_step) && _resync_count < 10) {
+				_step_rejects++;
+				return;
+			}
+
+			_last_acc_pos[0] = odom.position[0];
+			_last_acc_pos[1] = odom.position[1];
+		}
+	}
+
+	// first-order low-pass over horizontal position/velocity (LT_LPF_TAU).
+	// Applied after glitch rejection so the EKF receives a smoothed absolute
+	// position instead of raw per-frame jitter; 0 disables the filter.
+	const float tau = _param_lpf_tau.get();
+
+	if (tau > 0.f) {
+		// raw frame interval in seconds (first frame uses a nominal 10 ms period)
+		const float raw_dt = (_last_frame_time != 0) ? (odom.timestamp - _last_frame_time) * 1e-6f : 0.01f;
+		float dt = raw_dt;
+
+		if (dt < 0.001f) { dt = 0.001f; }
+		else if (dt > 0.1f) { dt = 0.1f; }
+
+		// re-lock to the new value if the stream stalled or this is the first frame
+		if (!_lpf_init || raw_dt > 0.2f) {
+			_lpf_pos[0] = odom.position[0];
+			_lpf_pos[1] = odom.position[1];
+			_lpf_vel[0] = odom.velocity[0];
+			_lpf_vel[1] = odom.velocity[1];
+			_lpf_init = true;
+
+		} else {
+			const float alpha = dt / (tau + dt);
+			_lpf_pos[0] += alpha * (odom.position[0] - _lpf_pos[0]);
+			_lpf_pos[1] += alpha * (odom.position[1] - _lpf_pos[1]);
+			_lpf_vel[0] += alpha * (odom.velocity[0] - _lpf_vel[0]);
+			_lpf_vel[1] += alpha * (odom.velocity[1] - _lpf_vel[1]);
+		}
+
+		odom.position[0] = _lpf_pos[0];
+		odom.position[1] = _lpf_pos[1];
+		odom.velocity[0] = _lpf_vel[0];
+		odom.velocity[1] = _lpf_vel[1];
+	}
 
 	_visual_odom_pub.publish(odom);
 
@@ -369,7 +480,7 @@ void LinkTrack::run()
 int LinkTrack::print_status()
 {
 	PX4_INFO("device: %s @ %d baud", _device, _baud);
-	PX4_INFO("frames: %lu, checksum errors: %lu", _frame_count, _checksum_errors);
+	PX4_INFO("frames: %lu, checksum errors: %lu, step rejects: %lu", _frame_count, _checksum_errors, _step_rejects);
 
 	if (_nmea_count > 0) {
 		PX4_INFO("NMEA bytes seen: %lu (module is in NMEA mode, NLink binary required)", _nmea_count);

@@ -22,6 +22,25 @@ parameters:
           1: NED passthrough
         default: 0
 
+      LT_TF_YAW:
+        description:
+          short: Yaw offset between anchor frame and EKF local frame
+          long: |
+            The EKF local frame X axis is aligned with magnetic north (from the
+            compass), while the LinkTrack anchor frame X axis points from A0 to
+            A3. This parameter rotates the UWB position/velocity so both frames
+            agree. Calibration: point the vehicle nose along the anchor X axis,
+            read the heading shown by QGC, enter that value here (degrees,
+            clockwise positive). Leave at 0 if the anchor X axis already points
+            magnetic north.
+        type: float
+        unit: deg
+        decimal: 1
+        increment: 1
+        min: -180
+        max: 180
+        default: 0
+
       LT_COV_POS:
         description:
           short: Fallback position variance
@@ -43,3 +62,55 @@ parameters:
         decimal: 4
         increment: 0.0025
         default: 0.04
+
+      LT_MAX_STEP:
+        description:
+          short: Maximum frame-to-frame position step (glitch rejection)
+          long: |
+            Glitch rejection for EMI-corrupted frames. A frame whose horizontal
+            displacement from the last accepted frame exceeds this threshold is
+            dropped (not published). At 100 Hz update rate, 0.1 m corresponds
+            to 10 m/s of physical motion, far above anything a hovering/flying
+            multirotor can do, so any larger step is by definition a glitch.
+            If 10 consecutive received frames are mutually consistent below the
+            threshold (e.g. after a genuine anchor recalibration moved the
+            solution), the filter resyncs and accepts the new position. Set to
+            0 to disable the filter.
+        type: float
+        unit: m
+        decimal: 2
+        min: 0
+        max: 5
+        default: 0.1
+
+      LT_LPF_TAU:
+        description:
+          short: Low-pass filter time constant for UWB position/velocity
+          long: |
+            First-order low-pass filter applied to the horizontal UWB position
+            and velocity after glitch rejection. Higher values smooth more but
+            add more lag. At 100 Hz input a tau of 0.05 s adds roughly 50 ms of
+            group delay, which is safe for hovering and slow flight. Set to 0
+            to disable the filter (raw LinkTrack output is published).
+        type: float
+        unit: s
+        decimal: 3
+        increment: 0.005
+        min: 0
+        max: 0.5
+        default: 0.05
+
+      LT_COV_VEL_Z:
+        description:
+          short: Vertical velocity variance
+          long: |
+            Variance reported for the vertical (z) component of the visual
+            odometry velocity. The tag's z channel is unreliable with
+            MATH_MODEL2 (cannot distinguish above/below the anchor plane), so
+            the default is deliberately huge to make the EKF ignore UWB
+            vertical velocity while keeping horizontal velocity fusion.
+        type: float
+        unit: (m/s)^2
+        decimal: 1
+        increment: 1
+        default: 25
