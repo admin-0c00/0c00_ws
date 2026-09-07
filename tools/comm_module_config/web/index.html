@@ -119,6 +119,9 @@ Copyright (C) 2026 零创无穷（成都）科技有限责任公司
     <div class="actions" id="actionsBar" style="display:none">
       <button id="btnRead" class="ghost">读取参数</button>
       <button id="btnWrite" disabled>写入配置</button>
+      <button id="btnExport" class="ghost" disabled>导出配置</button>
+      <button id="btnImport" class="ghost">导入配置</button>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none">
       <button id="btnReset" class="danger">恢复出厂设置</button>
       <span class="hint">写入后模块会自动重启，约 3 秒后请重新【搜索设备】确认配置生效。</span>
     </div>
@@ -187,11 +190,12 @@ async function doSearch() {
 }
 
 function showForm(on) {
-  // on=true: 参数已读取，显示完整表单；on=false: 只显示按钮栏（未读参数）
+  // on=true: 参数已读取/已导入，显示完整表单；on=false: 只显示按钮栏
   $("form").style.display = on ? "" : "none";
   $("noSel").style.display = curMac ? "none" : "";
   $("actionsBar").style.display = curMac ? "" : "none";
   $("btnWrite").disabled = !on;
+  $("btnExport").disabled = !on;
 }
 
 // ---- 表单 <-> 配置模型 ----
@@ -314,6 +318,61 @@ async function doReset() {
     showForm(false); cfgCache = null;
   } catch (e) { toast(e.message, false); }
 }
+
+// ---- 配置导入 / 导出 ----
+function doExport() {
+  if (!cfgCache) return toast("请先读取参数或导入配置", false);
+  const c = collectAll();
+  const err = validate(c);
+  if (err) return toast("当前表单有误，无法导出：" + err, false);
+  const out = Object.assign({
+    _type: "comm_module_config",   // 文件标识，导入时校验
+    _version: 1,
+    _exported_at: new Date().toISOString(),
+  }, c);
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type: "application/json"});
+  const a = document.createElement("a");
+  const ts = new Date().toISOString().replace(/[:T]/g, "").slice(0, 14);
+  const tag = (c.name || c.mac).replace(/[^\w.-]+/g, "_");
+  a.href = URL.createObjectURL(blob);
+  a.download = `comm_module_${tag}_${ts}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("配置已导出");
+}
+
+function doImportFile(file) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const c = JSON.parse(rd.result);
+      if (typeof c !== "object" || !c) throw new Error("不是 JSON 对象");
+      if (c._type && c._type !== "comm_module_config")
+        throw new Error("不是本工具导出的配置文件");
+      for (const k of ["name", "dhcp", "ip", "mask", "gateway", "port1", "port2"])
+        if (!(k in c)) throw new Error(`缺少字段 ${k}`);
+      // 安全起见：导入不覆盖目标设备的 MAC，其他参数整体套用
+      c.mac = curMac;
+      const err = validate(c);
+      if (err) throw new Error(err);
+      cfgCache = c;
+      fillAll(cfgCache);
+      showForm(true);
+      toast("配置已导入表单，确认无误后点【写入配置】");
+    } catch (e) {
+      toast("导入失败：" + e.message, false);
+    }
+  };
+  rd.readAsText(file);
+}
+
+$("btnExport").onclick = doExport;
+$("btnImport").onclick = () => {
+  if (!curMac) return toast("先在左侧选择目标设备", false);
+  $("importFile").value = "";
+  $("importFile").click();
+};
+$("importFile").onchange = e => { if (e.target.files[0]) doImportFile(e.target.files[0]); };
 
 function switchPort(p) {
   // 切换前把当前表单值存回 cfgCache，避免丢编辑
