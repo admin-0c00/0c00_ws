@@ -33,7 +33,10 @@
 Ctrl+C 中断后飞机会自动降落（PX4 失联保护）。
 """
 
+import json
 import math
+import sys
+import time
 
 from swarm_api import Drone
 
@@ -42,38 +45,61 @@ TAKEOFF_ALT = 1.5   # 起飞高度 (m)
 SIDE = 2.0          # 正方形边长 (m)
 
 
+def emit_result(result, **fields):
+    """打印机器可解析的运行结果（AI Agent / CI 判定用）。
+    约定：进程最后一行输出 DEMO_RESULT <json>，退出码 0=PASS / 1=FAIL。"""
+    print("DEMO_RESULT " + json.dumps({"result": result, **fields}, ensure_ascii=False))
+
+
 def main():
-    # ---------- 1. 连接飞机 ----------
-    # Drone 内部会自动：配置话题 QoS、开启后台 20Hz 设定点流线程、
-    # 持续接收飞机状态（位置/解锁/模式），你拿到的 pos 永远是 ENU 坐标
-    drone = Drone(NS)
-    print(f"已连接 {NS}")
+    t0 = time.time()
+    stage = "connect"   # 当前阶段，FAIL 时随结果输出，便于定位
+    drone = None
+    try:
+        # ---------- 1. 连接飞机 ----------
+        # Drone 内部会自动：配置话题 QoS、开启后台 20Hz 设定点流线程、
+        # 持续接收飞机状态（位置/解锁/模式），你拿到的 pos 永远是 ENU 坐标
+        drone = Drone(NS)
+        print(f"已连接 {NS}")
 
-    # ---------- 2. 起飞 ----------
-    # 高度基准是"当前实测高度 + 1.5m"，自动规避 EKF 高度原点偏差；
-    # 解锁、切 Offboard、命令重发这些细节都在 takeoff 内部完成
-    print(">>> 起飞")
-    drone.takeoff(TAKEOFF_ALT)
+        # ---------- 2. 起飞 ----------
+        # 高度基准是"当前实测高度 + 1.5m"，自动规避 EKF 高度原点偏差；
+        # 解锁、切 Offboard、命令重发这些细节都在 takeoff 内部完成
+        stage = "takeoff"
+        print(">>> 起飞")
+        drone.takeoff(TAKEOFF_ALT)
 
-    # ---------- 3. 按航点表飞完整个正方形（坐标全是 ENU） ----------
-    # ENU 下"顺时针（俯视）"：北 -> 东 -> 南 -> 西
-    legs = [(0, SIDE, "向前飞（北）"),
-            (SIDE, SIDE, "右转，向东"),
-            (SIDE, 0, "右转，向南"),
-            (0, 0, "右转，向西，回到原点")]
-    prev = (0, 0)
-    for x, y, desc in legs:
-        print(f">>> {desc}")
-        yaw = math.atan2(y - prev[1], x - prev[0])  # ENU 航向：0=东，逆时针为正
-        drone.goto(x, y, TAKEOFF_ALT, yaw=yaw)      # 阻塞式：飞到才返回
-        prev = (x, y)
+        # ---------- 3. 按航点表飞完整个正方形（坐标全是 ENU） ----------
+        # ENU 下"顺时针（俯视）"：北 -> 东 -> 南 -> 西
+        stage = "square"
+        legs = [(0, SIDE, "向前飞（北）"),
+                (SIDE, SIDE, "右转，向东"),
+                (SIDE, 0, "右转，向南"),
+                (0, 0, "右转，向西，回到原点")]
+        prev = (0, 0)
+        for x, y, desc in legs:
+            print(f">>> {desc}")
+            yaw = math.atan2(y - prev[1], x - prev[0])  # ENU 航向：0=东，逆时针为正
+            drone.goto(x, y, TAKEOFF_ALT, yaw=yaw)      # 阻塞式：飞到才返回
+            prev = (x, y)
 
-    # ---------- 4. 降落 ----------
-    print(">>> 降落")
-    drone.land()      # 阻塞式：落地自动上锁后才返回
-    drone.shutdown()  # 释放 ROS 资源
-    print("演示完成 ✔")
+        # ---------- 4. 降落 ----------
+        stage = "land"
+        print(">>> 降落")
+        drone.land()      # 阻塞式：落地自动上锁后才返回
+        print("演示完成 ✔")
+        emit_result("PASS", drone=NS, waypoints=len(legs), duration_s=round(time.time() - t0, 1))
+        return 0
+    except KeyboardInterrupt:
+        emit_result("FAIL", stage=stage, error="用户中断(Ctrl+C)")
+        return 1
+    except Exception as e:      # DroneError 等（连接超时/解锁被拒/goto 超时）
+        emit_result("FAIL", stage=stage, error=str(e))
+        return 1
+    finally:
+        if drone is not None:
+            drone.shutdown()  # 释放 ROS 资源
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

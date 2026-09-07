@@ -32,42 +32,75 @@
 Ctrl+C 中断后飞机会自动降落（框架兜底 + PX4 失联保护双保险）。
 """
 
-from swarm_api import Swarm
+import json
+import sys
+import time
+
+from swarm_api import Swarm, SwarmError
 
 NUM_DRONES = 3    # 飞机数量（要和仿真启动的数量一致）
 TAKEOFF_ALT = 1.5  # 起飞高度 (m)
 SIDE = 2.0         # 正方形边长 (m)
 
 
+def emit_result(result, **fields):
+    """打印机器可解析的运行结果（AI Agent / CI 判定用）。
+    约定：进程最后一行输出 DEMO_RESULT <json>，退出码 0=PASS / 1=FAIL。"""
+    print("DEMO_RESULT " + json.dumps({"result": result, **fields}, ensure_ascii=False))
+
+
 def main():
-    # ---------- 1. 连接集群 ----------
-    # Swarm 会自动扫描 ROS 话题发现在线飞机（uav_1, uav_2, ...），
-    # 真机接入时这段代码一个字都不用改（仿真与真机同构）。
-    swarm = Swarm(num_drones=NUM_DRONES)
-    print(f"已连接 {len(swarm)} 架飞机: {swarm.namespaces}")
+    t0 = time.time()
+    stage = "connect"   # 当前阶段，FAIL 时随结果输出，便于定位
+    swarm = None
+    try:
+        # ---------- 1. 连接集群 ----------
+        # Swarm 会自动扫描 ROS 话题发现在线飞机（uav_1, uav_2, ...），
+        # 真机接入时这段代码一个字都不用改（仿真与真机同构）。
+        swarm = Swarm(num_drones=NUM_DRONES)
+        print(f"已连接 {len(swarm)} 架飞机: {swarm.namespaces}")
 
-    # ---------- 2. 全群同时起飞 ----------
-    # 每架飞机一个线程并行执行，某机失败会自动悬停并汇总报错
-    print(">>> 全群起飞")
-    swarm.takeoff(TAKEOFF_ALT)
+        # ---------- 2. 全群同时起飞 ----------
+        # 每架飞机一个线程并行执行，某机失败会自动悬停并汇总报错
+        stage = "takeoff"
+        print(">>> 全群起飞")
+        swarm.takeoff(TAKEOFF_ALT)
 
-    # ---------- 3. 全群同时画正方形 ----------
-    # ENU 下"顺时针（俯视）"：北 -> 东 -> 南 -> 西
-    legs = [(0, SIDE, "向前飞（北）"),
-            (SIDE, SIDE, "右转，向东"),
-            (SIDE, 0, "右转，向南"),
-            (0, 0, "右转，向西，回到起点")]
-    for x, y, desc in legs:
-        print(f">>> {desc}")
-        # 所有飞机飞同一个相对点（每机在各自本地系内，所以互不碰撞）
-        swarm.goto_all((x, y, TAKEOFF_ALT))
+        # ---------- 3. 全群同时画正方形 ----------
+        # ENU 下"顺时针（俯视）"：北 -> 东 -> 南 -> 西
+        stage = "square"
+        legs = [(0, SIDE, "向前飞（北）"),
+                (SIDE, SIDE, "右转，向东"),
+                (SIDE, 0, "右转，向南"),
+                (0, 0, "右转，向西，回到起点")]
+        for x, y, desc in legs:
+            print(f">>> {desc}")
+            # 所有飞机飞同一个相对点（每机在各自本地系内，所以互不碰撞）
+            swarm.goto_all((x, y, TAKEOFF_ALT))
 
-    # ---------- 4. 全群同时降落 ----------
-    print(">>> 全群降落")
-    swarm.land()
-    swarm.shutdown()
-    print("演示完成 ✔")
+        # ---------- 4. 全群同时降落 ----------
+        stage = "land"
+        print(">>> 全群降落")
+        swarm.land()
+        print("演示完成 ✔")
+        emit_result("PASS", drones=swarm.namespaces, waypoints=len(legs),
+                    duration_s=round(time.time() - t0, 1))
+        return 0
+    except KeyboardInterrupt:
+        emit_result("FAIL", stage=stage, error="用户中断(Ctrl+C)")
+        return 1
+    except SwarmError as e:
+        # 某机失败已被隔离（自动悬停），errors 是 {命名空间: 异常}
+        emit_result("FAIL", stage=stage,
+                    errors={ns: str(err) for ns, err in e.errors.items()})
+        return 1
+    except Exception as e:
+        emit_result("FAIL", stage=stage, error=str(e))
+        return 1
+    finally:
+        if swarm is not None:
+            swarm.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

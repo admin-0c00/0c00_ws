@@ -31,7 +31,9 @@
 想改高度/边长：直接改下面两个常量即可。Ctrl+C 中断后飞机会自动降落（PX4 失联保护）。
 """
 
+import json
 import math
+import sys
 import time
 
 import rclpy
@@ -44,6 +46,13 @@ TAKEOFF_ALT = 1.5   # 起飞高度 (m)
 SIDE = 2.0          # 正方形边长 (m)
 NS = "uav_1"        # 飞机命名空间（单机仿真固定是 uav_1，MAV_SYS_ID=1）
 TOL = 0.3           # 航点到达判定误差 (m)
+CONNECT_TIMEOUT = 30.0  # 等待飞控数据的超时 (s)：仿真没启动时快速 FAIL 退出，不挂死
+
+
+def emit_result(result, **fields):
+    """打印机器可解析的运行结果（AI Agent / CI 判定用）。
+    约定：进程最后一行输出 DEMO_RESULT <json>，退出码 0=PASS / 1=FAIL。"""
+    print("DEMO_RESULT " + json.dumps({"result": result, **fields}, ensure_ascii=False))
 
 
 class Demo(Node):
@@ -115,56 +124,77 @@ def fly_to(node, n, e, z, yaw=0.0):
 
 
 def main():
-    rclpy.init()
-    node = Demo()
-    log = node.get_logger().info
+    t0 = time.time()
+    stage = "connect"   # 当前阶段，FAIL 时随结果输出，便于定位
+    node = None
+    try:
+        rclpy.init()
+        node = Demo()
+        log = node.get_logger().info
 
-    # ---------- 0. 等飞控数据（确认仿真已启动） ----------
-    log("等待飞控数据…（请先启动仿真）")
-    while node.pos is None:
-        rclpy.spin_once(node, timeout_sec=0.1)
+        # ---------- 0. 等飞控数据（确认仿真已启动；超时 FAIL 退出，不挂死） ----------
+        log("等待飞控数据…（请先启动仿真）")
+        t_wait = time.time()
+        while node.pos is None:
+            if time.time() - t_wait > CONNECT_TIMEOUT:
+                raise TimeoutError(f"等待飞控数据超过 {CONNECT_TIMEOUT:.0f}s（仿真是否已启动？）")
+            rclpy.spin_once(node, timeout_sec=0.1)
 
-    # ---------- 1. 进入 Offboard 并解锁 ----------
-    # PX4 规定：必须先连续收到一段设定点流，才允许切 Offboard，所以先发 1 秒再请求
-    # 重要：EKF 的高度原点可能有偏差（尤其仿真/室内），
-    # 所以目标高度 = 起飞前实测高度 - 想爬的高度（NED 里下为正），而不是写死的绝对值
-    z_target = node.pos[2] - TAKEOFF_ALT
-    log(f"地面实测 z {node.pos[2]:.2f} m，目标 z {z_target:.2f} m")
+        # ---------- 1. 进入 Offboard 并解锁 ----------
+        # PX4 规定：必须先连续收到一段设定点流，才允许切 Offboard，所以先发 1 秒再请求
+        # 重要：EKF 的高度原点可能有偏差（尤其仿真/室内），
+        # 所以目标高度 = 起飞前实测高度 - 想爬的高度（NED 里下为正），而不是写死的绝对值
+        stage = "takeoff"
+        z_target = node.pos[2] - TAKEOFF_ALT
+        log(f"地面实测 z {node.pos[2]:.2f} m，目标 z {z_target:.2f} m")
 
-    log("预发设定点，然后请求 Offboard 模式 + 解锁…")
-    for _ in range(10):
-        node.setpoint(0, 0, z_target)
-        rclpy.spin_once(node, timeout_sec=0.1)
-    while not (node.offboard and node.armed):
-        node.setpoint(0, 0, z_target)   # 请求期间设定点不能断
-        node.command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)       # 切 Offboard（主模式 6）
-        node.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)   # 解锁
-        rclpy.spin_once(node, timeout_sec=0.5)
+        log("预发设定点，然后请求 Offboard 模式 + 解锁…")
+        for _ in range(10):
+            node.setpoint(0, 0, z_target)
+            rclpy.spin_once(node, timeout_sec=0.1)
+        while not (node.offboard and node.armed):
+            node.setpoint(0, 0, z_target)   # 请求期间设定点不能断
+            node.command(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)       # 切 Offboard（主模式 6）
+            node.command(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)   # 解锁
+            rclpy.spin_once(node, timeout_sec=0.5)
 
-    # ---------- 2. 按航点表飞完整个正方形 ----------
-    # 从原点出发，顺时针一圈回到原点（边长 SIDE）
-    legs = [(0, 0, "起飞到 1.5m"),
-            (SIDE, 0, "向前飞（北）"),
-            (SIDE, SIDE, "右转，向东"),
-            (0, SIDE, "右转，向南"),
-            (0, 0, "右转，向西，回到原点")]
-    prev = (0, 0)
-    for n, e, desc in legs:
-        log(f">>> {desc}")
-        yaw = math.atan2(e - prev[1], n - prev[0])  # 机头对准航段方向
-        fly_to(node, n, e, z_target, yaw)
-        prev = (n, e)
+        # ---------- 2. 按航点表飞完整个正方形 ----------
+        # 从原点出发，顺时针一圈回到原点（边长 SIDE）
+        stage = "square"
+        legs = [(0, 0, "起飞到 1.5m"),
+                (SIDE, 0, "向前飞（北）"),
+                (SIDE, SIDE, "右转，向东"),
+                (0, SIDE, "右转，向南"),
+                (0, 0, "右转，向西，回到原点")]
+        prev = (0, 0)
+        for n, e, desc in legs:
+            log(f">>> {desc}")
+            yaw = math.atan2(e - prev[1], n - prev[0])  # 机头对准航段方向
+            fly_to(node, n, e, z_target, yaw)
+            prev = (n, e)
 
-    # ---------- 3. 原地降落，直到自动上锁 ----------
-    log(">>> 降落")
-    while node.armed:
-        node.command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
-        rclpy.spin_once(node, timeout_sec=0.5)
+        # ---------- 3. 原地降落，直到自动上锁 ----------
+        stage = "land"
+        log(">>> 降落")
+        while node.armed:
+            node.command(VehicleCommand.VEHICLE_CMD_NAV_LAND)
+            rclpy.spin_once(node, timeout_sec=0.5)
 
-    log("已降落并上锁，演示完成 ✔")
-    node.destroy_node()
-    rclpy.shutdown()
+        log("已降落并上锁，演示完成 ✔")
+        emit_result("PASS", drone=NS, waypoints=len(legs), duration_s=round(time.time() - t0, 1))
+        return 0
+    except KeyboardInterrupt:
+        emit_result("FAIL", stage=stage, error="用户中断(Ctrl+C)")
+        return 1
+    except Exception as e:
+        emit_result("FAIL", stage=stage, error=str(e))
+        return 1
+    finally:
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
