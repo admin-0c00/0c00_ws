@@ -17,10 +17,11 @@
   订阅 /web_control/cmd    {"id": 1, "ns": "uav_1", "action": "takeoff", "alt": 1.5}
   发布 /web_control/result {"id": 1, "ns": "uav_1", "action": "takeoff", "ok": true, "msg": "ok"}
 
-action 取值: arm / disarm / takeoff / land / rtl / hover
+action 取值: arm / disarm / takeoff / land / rtl / hover / goto / goto_body
 """
 
 import json
+import math
 import threading
 
 import rclpy
@@ -29,7 +30,7 @@ from std_msgs.msg import String
 
 from swarm_api import Drone
 
-ACTIONS = {"arm", "disarm", "takeoff", "land", "rtl", "hover", "goto"}
+ACTIONS = {"arm", "disarm", "takeoff", "land", "rtl", "hover", "goto", "goto_body"}
 
 
 class WebControl(Node):
@@ -76,8 +77,21 @@ class WebControl(Node):
                 drone.rtl()
             elif action == "hover":
                 drone.hover()
-            elif action == "goto":   # 网页指点飞行：飞到 ENU 点 (x,y,z)，到达/超时回执
-                drone.goto(float(req["x"]), float(req["y"]), float(req["z"]))
+            elif action == "goto":   # 网页指点飞行：飞到 ENU 点 (x,y,z)，可选 yaw 转机头，到达/超时回执
+                yaw = req.get("yaw")
+                drone.goto(float(req["x"]), float(req["y"]), float(req["z"]),
+                           yaw=float(yaw) if yaw is not None else None)
+            elif action == "goto_body":   # 机体坐标系相对位移：x=前 / y=左 / z=上（ENU，ψ 为机头航向）
+                dx = float(req.get("dx", 0.0))
+                dy = float(req.get("dy", 0.0))
+                dz = float(req.get("dz", 0.0))
+                if drone.pos is None:
+                    raise RuntimeError("尚未收到位置，无法执行相对位移")
+                psi = float(drone.yaw)
+                east = dx * math.cos(psi) - dy * math.sin(psi)
+                north = dx * math.sin(psi) + dy * math.cos(psi)
+                x, y, z = drone.pos
+                drone.goto(x + east, y + north, z + dz)
             self._reply(req, True, "ok")
         except Exception as e:  # DroneError 或其他异常都回执给网页
             self._reply(req, False, str(e))

@@ -89,7 +89,22 @@
   #rec-status { font-size: 12px; color: #8b949e; margin-top: 8px; white-space: pre-wrap; word-break: break-all; }
   #rec-status.rec-on { color: #f85149; }
   #goto-toggle.on { background: #144a75; border-color: #58d6ff; box-shadow: 0 0 6px rgba(88, 214, 255, 0.5); }
+  #coord-toggle.on { background: #144a75; border-color: #58d6ff; box-shadow: 0 0 6px rgba(88, 214, 255, 0.5); }
   #view3d.goto-mode canvas { cursor: crosshair; }
+  #coord-panel { position: absolute; top: 44px; right: 12px; width: 268px; background: rgba(22, 27, 34, 0.97); border: 1px solid #30363d; border-radius: 8px; padding: 10px 12px; z-index: 40; display: none; font-size: 12px; color: #c9d1d9; }
+  #coord-panel h3 { font-size: 13px; margin-bottom: 6px; color: #e6edf3; display: flex; align-items: center; justify-content: space-between; }
+  #coord-close { background: none; border: none; color: #8b949e; cursor: pointer; font-size: 16px; padding: 0 2px; }
+  #coord-mode-ctl { display: flex; gap: 6px; margin-bottom: 6px; }
+  #coord-mode-ctl button { flex: 1; background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 4px 0; font-size: 12px; cursor: pointer; }
+  #coord-mode-ctl button.on { background: #144a75; border-color: #58d6ff; }
+  .coord-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .coord-row label { color: #8b949e; text-align: center; }
+  .coord-in { background: #0d2740; color: #58d6ff; border: 1px solid #1c4a6e; border-radius: 6px; padding: 4px 6px; font-size: 12px; width: 100%; }
+  #coord-hint { color: #8b949e; font-size: 11px; margin: 2px 0 8px; line-height: 1.5; }
+  #coord-info { color: #8b949e; font-size: 11px; margin-bottom: 8px; white-space: pre-wrap; line-height: 1.6; }
+  #coord-go { width: 100%; background: #0d2740; color: #ffb300; border: 1px solid #8a6d1f; border-radius: 6px; padding: 5px 0; font-size: 13px; cursor: pointer; }
+  #coord-go:hover { background: #144a75; }
+  #coord-go:disabled { opacity: 0.45; cursor: wait; }
   .card.selected { border-color: #58d6ff; box-shadow: 0 0 6px rgba(88, 214, 255, 0.35); }
   .rec-presets { display: flex; gap: 6px; margin: 6px 0; }
   .rec-presets .cbtn { flex: 1; padding: 3px 0; font-size: 12px; }
@@ -108,6 +123,7 @@
   <span id="conn-text">连接 rosbridge...</span>
   <div id="global-ctl">
     <button class="gbtn" id="goto-toggle" title="打开后单击 3D 地面，选中的飞机即飞向该点">指点飞行</button>
+    <button class="gbtn" id="coord-toggle" title="手动填写 XYZ：机体相对位移或绝对坐标飞行">坐标飞行</button>
     <button class="gbtn" id="trail-clear" title="清除所有飞机的飞行轨迹">清除轨迹</button>
     <button class="gbtn" data-cmd="takeoff">全部起飞</button>
     <button class="gbtn" data-cmd="rtl">全部返航</button>
@@ -173,7 +189,7 @@
       </div>
     </div>
   </div>
-  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div><div id="chart-panel" style="display:none"><div id="chart-head"><h3 id="chart-title">数据曲线</h3><button id="chart-close" title="关闭">✕</button></div><div id="chart-fields"></div><div id="chart-plot"></div></div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div><div id="coord-panel"><h3>坐标飞行<button id="coord-close" title="关闭">✕</button></h3><div id="coord-mode-ctl"><button id="coord-mode-body" class="on">机体相对</button><button id="coord-mode-abs">绝对坐标</button></div><div class="coord-row"><label>X</label><label>Y</label><label>Z</label></div><div class="coord-row"><input id="coord-x" class="coord-in" type="number" value="0.5" step="0.1"><input id="coord-y" class="coord-in" type="number" value="0" step="0.1"><input id="coord-z" class="coord-in" type="number" value="0" step="0.1"></div><div id="coord-hint"></div><div id="coord-info"></div><button id="coord-go">执行</button></div><div id="chart-panel" style="display:none"><div id="chart-head"><h3 id="chart-title">数据曲线</h3><button id="chart-close" title="关闭">✕</button></div><div id="chart-fields"></div><div id="chart-plot"></div></div></div>
 </div>
 
 <script>
@@ -311,7 +327,7 @@ const MAV_CMDS = {
   hold:    { command: 17 },   // NAV_LOITER_UNLIM -> 切 Hold
 };
 const FENCE_ACTION_NAMES = { hold: '悬停', land: '降落', rtl: '返航' };
-const ACTION_NAMES = { arm: '解锁电机', disarm: '上锁电机', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停', goto: '指点飞行' };
+const ACTION_NAMES = { arm: '解锁电机', disarm: '上锁电机', takeoff: '起飞', land: '降落', rtl: '返航', hover: '悬停', goto: '指点飞行', goto_body: '机体相对飞行' };
 const cmdTopics = {};
 
 // ---------- 可靠通道（按钮） ----------
@@ -862,6 +878,118 @@ gotoToggle.addEventListener('click', () => {
   showToast(gotoMode ? '指点飞行已开启：点击卡片选飞机，再单击地面' : '指点飞行已关闭', gotoMode);
 });
 
+// ============================== 坐标飞行 ==============================
+// 机体相对：x=前 / y=左 / z=上，把 (dx,dy,dz) 交给 web_control_node 换算成 ENU 位移后 goto。
+// 绝对坐标：x=东 / y=北 / z=上，与指点飞行共用共享坐标系换算，得到该机本地 ENU 目标点后 goto。
+const coordToggle = document.getElementById('coord-toggle');
+const coordPanel = document.getElementById('coord-panel');
+const coordClose = document.getElementById('coord-close');
+const coordBodyBtn = document.getElementById('coord-mode-body');
+const coordAbsBtn = document.getElementById('coord-mode-abs');
+const coordGo = document.getElementById('coord-go');
+const coordHint = document.getElementById('coord-hint');
+const coordInfo = document.getElementById('coord-info');
+const coordInX = document.getElementById('coord-x');
+const coordInY = document.getElementById('coord-y');
+const coordInZ = document.getElementById('coord-z');
+let coordMode = 'body';   // body / abs
+
+function setCoordMode(mode) {
+  coordMode = mode;
+  coordBodyBtn.classList.toggle('on', mode === 'body');
+  coordAbsBtn.classList.toggle('on', mode === 'abs');
+  coordHint.textContent = mode === 'body'
+    ? '机体相对：X=前(米) Y=左(米) Z=上(米)。目标 = 当前机位 + 机头坐标系位移。'
+    : '绝对坐标：X=东(米) Y=北(米) Z=上(米)。目标 = 指定 ENU 点（按上方坐标系下拉框解释）。';
+  // 切模式时给输入框一个合理默认，避免拿错数值
+  if (mode === 'body') { coordInX.value = 0.5; coordInY.value = 0; coordInZ.value = 0; }
+  else { coordInX.value = ''; coordInY.value = ''; coordInZ.value = ''; }
+  refreshCoordInfo();
+}
+
+function coordTarget() {
+  const u = selectedNs && uavs[selectedNs];
+  if (!u || !u.pos || Date.now() - u.lastSeen > 3000) { showToast('请先在侧栏选择一架在线飞机', false); return null; }
+  if (!u.status || u.status.arming_state !== 2) { showToast(`${u.ns} 未起飞（坐标飞行需先起飞）`, false); return null; }
+  return u;
+}
+
+function refreshCoordInfo() {
+  if (coordPanel.style.display === 'none') return;
+  const u = selectedNs && uavs[selectedNs];
+  if (!u || !u.pos) { coordInfo.textContent = '尚未选择在线飞机'; return; }
+  const ne = uavNe(u);
+  const enu = { x: ne.e, y: ne.n, z: -u.pos.z };   // 显示统一用 ENU（东/北/上），与本机本地 ENU 对齐
+  const deg = ((Math.PI / 2 - (u.pos.heading ?? 0)) * 180 / Math.PI + 360) % 360;
+  coordInfo.textContent =
+    `目标机：${u.ns}\n当前 ENU 位置：${enu.x.toFixed(2)}, ${enu.y.toFixed(2)}, ${enu.z.toFixed(2)} m\n当前航向（东=0°逆时针正）：${deg.toFixed(1)}°`;
+}
+
+// 打开/关闭面板；开面板时自动退出"指点飞行"避免两种互斥控制同时生效
+coordToggle.addEventListener('click', () => {
+  const open = coordPanel.style.display === 'none' || coordPanel.style.display === '';
+  coordPanel.style.display = open ? 'block' : 'none';
+  coordToggle.classList.toggle('on', open);
+  if (open) {
+    if (gotoMode) { gotoToggle.click(); }
+    setCoordMode(coordMode);
+    showToast('坐标飞行面板已打开：填写 XYZ 后点"执行"', null);
+  } else {
+    showToast('坐标飞行面板已关闭', null);
+  }
+});
+coordClose.addEventListener('click', () => { if (coordPanel.style.display !== 'none') coordToggle.click(); });
+coordBodyBtn.addEventListener('click', () => setCoordMode('body'));
+coordAbsBtn.addEventListener('click', () => setCoordMode('abs'));
+
+// 下发目标并在 3D 场景放金色标记，回执后由 finishCmd 自动清除。
+// targetEnu 为该机本地 ENU 目标点（东/北/上），用于 mark 与回显，payload 才是后端所需的字段。
+function sendCoordGoto(u, action, payload, targetEnu) {
+  const id = sendCmd(u, action, null, payload);
+  const marker = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.8, 12),
+                                new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.9 }));
+  marker.rotation.x = Math.PI;
+  marker.position.set(targetEnu.x, targetEnu.z + 0.4, -targetEnu.y);   // three: x=东, y=上, z=-北
+  scene.add(marker);
+  if (pendingCmds[id]) pendingCmds[id].marker = marker;
+}
+
+coordGo.addEventListener('click', () => {
+  const u = coordTarget();
+  if (!u) return;
+  const x = parseFloat(coordInX.value), y = parseFloat(coordInY.value), z = parseFloat(coordInZ.value);
+  if (String(coordInX.value).trim() === '' || String(coordInY.value).trim() === '' || String(coordInZ.value).trim() === '' ||
+      !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    showToast('请完整填写 X/Y/Z 三个数值', false); return;
+  }
+  if (coordMode === 'body') {
+    // 机体相对：把 dx/dy/dz 直接交给后端换算（后端用 Drone.yaw 做 ENU 旋转，最准）
+    const finalAlt = -u.pos.z + z;
+    if (finalAlt < 0) { showToast(`机体相对 Z 会导致高度为负（当前 ${(-u.pos.z).toFixed(2)}m + ${z}m），已拒绝`, false); return; }
+    // 围栏粗检：用机头航向把 (dx,dy) 旋到 ENU，再叠加当前共享坐标判断是否会超出 R
+    const psi = Math.PI / 2 - (u.pos.heading ?? 0);
+    const east = x * Math.cos(psi) - y * Math.sin(psi);
+    const north = x * Math.sin(psi) + y * Math.cos(psi);
+    const ne = uavNe(u);
+    const hip = Math.hypot(ne.e + east, ne.n + north);
+    if (!confirm(`确认让 ${u.ns} 沿机头相对移动 X/${x} Y/${y} Z/${z} m？`)) return;
+    if (hip > FENCE_R) { showToast(`目标点将在围栏外（R=${FENCE_R}m），已拒绝`, false); return; }
+    sendCoordGoto(u, 'goto_body', { dx: x, dy: y, dz: z },
+                  { x: ne.e + east, y: ne.n + north, z: finalAlt });
+  } else {
+    // 绝对坐标：输入为 ENU（东/北/上），走共享坐标系换算到该机本地 ENU
+    const h = Math.max(0.5, z);                 // 目标高度，低于 0.5m 按 0.5m 处理（保持安全爬升平面）
+    const shared = { n: y, e: x };              // ENU(东=x,北=y) ↔ 共享 NED(n=y,e=x)
+    if (Math.hypot(shared.n, shared.e) > FENCE_R) { showToast(`目标点在围栏外（R=${FENCE_R}m），已拒绝`, false); return; }
+    const ne = uavNe(u);
+    const localN = shared.n - (ne.n - u.pos.x); // 目标在该机本地系的北向分量
+    const localE = shared.e - (ne.e - u.pos.y); // 东向分量
+    if (!confirm(`确认让 ${u.ns} 飞向绝对 ENU (${x}, ${y}, ${h.toFixed(2)})？`)) return;
+    sendCoordGoto(u, 'goto', { x: +localE.toFixed(2), y: +localN.toFixed(2), z: +h.toFixed(2) },
+                  { x: +localE.toFixed(2), y: +localN.toFixed(2), z: +h.toFixed(2) });
+  }
+});
+
 const raycaster = new THREE.Raycaster();
 // 一键清除全部飞行轨迹（不清除飞机与状态，仅清轨迹线）
 document.getElementById('trail-clear').addEventListener('click', () => {
@@ -1167,6 +1295,7 @@ function animate() {
   }
   fenceScan.rotation.y = t * 0.4;
   fenceScan.material.color.setHex(breach ? 0xff5566 : 0x66ffff);
+  if (coordPanel.style.display !== 'none') refreshCoordInfo();   // 坐标飞行面板实时目标机信息
   // 桨叶：解锁加速旋转，上锁减速停下；桨盘透明度随转速
   for (const u of Object.values(uavs)) {
     if (!u.props) continue;
