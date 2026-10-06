@@ -189,7 +189,7 @@
       </div>
     </div>
   </div>
-  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 北 = -Z 方向 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div><div id="coord-panel"><h3>坐标飞行<button id="coord-close" title="关闭">✕</button></h3><div id="coord-mode-ctl"><button id="coord-mode-body" class="on">机体相对</button><button id="coord-mode-abs">绝对坐标</button></div><div class="coord-row"><label>X</label><label>Y</label><label>Z</label></div><div class="coord-row"><input id="coord-x" class="coord-in" type="number" value="0.5" step="0.1"><input id="coord-y" class="coord-in" type="number" value="0" step="0.1"><input id="coord-z" class="coord-in" type="number" value="0" step="0.1"></div><div id="coord-hint"></div><div id="coord-info"></div><button id="coord-go">执行</button></div><div id="chart-panel" style="display:none"><div id="chart-head"><h3 id="chart-title">数据曲线</h3><button id="chart-close" title="关闭">✕</button></div><div id="chart-fields"></div><div id="chart-plot"></div></div></div>
+  <div id="view3d"><div id="hint">左键拖拽旋转 · 滚轮缩放 · 右键拖拽平移 | 网格 1m · 起飞系：红X=前(上电机头方向) 绿Y=左 蓝Z=上 · 青色圆柱 = 地理围栏 R10m × H6m（圆心 = uav_1 原点）</div><div id="fence-alert"></div><div id="cmd-toast"></div><div id="coord-panel"><h3>坐标飞行<button id="coord-close" title="关闭">✕</button></h3><div id="coord-mode-ctl"><button id="coord-mode-body" class="on">机体相对</button><button id="coord-mode-abs">绝对坐标</button></div><div class="coord-row"><label>X</label><label>Y</label><label>Z</label></div><div class="coord-row"><input id="coord-x" class="coord-in" type="number" value="0.5" step="0.1"><input id="coord-y" class="coord-in" type="number" value="0" step="0.1"><input id="coord-z" class="coord-in" type="number" value="0" step="0.1"></div><div id="coord-hint"></div><div id="coord-info"></div><button id="coord-go">执行</button></div><div id="chart-panel" style="display:none"><div id="chart-head"><h3 id="chart-title">数据曲线</h3><button id="chart-close" title="关闭">✕</button></div><div id="chart-fields"></div><div id="chart-plot"></div></div></div>
 </div>
 
 <script>
@@ -299,7 +299,7 @@ function createCard(u) {
       <span class="k">飞行模式</span><span class="v" data-f="mode">-</span>
       <span class="k">电量</span><span class="v" data-f="bat">-</span>
       <span class="k">电压/电流</span><span class="v" data-f="volt">-</span>
-      <span class="k">位置 N/E/高</span><span class="v" data-f="pos">-</span>
+      <span class="k">位置 前X/左Y/高Z</span><span class="v" data-f="pos">-</span>
       <span class="k">速度 水平/垂直</span><span class="v" data-f="vel">-</span>
     </div>
     <div class="bat-bar"><div class="bat-fill" data-f="batfill" style="width:0%;background:#3fb950"></div></div>
@@ -470,7 +470,8 @@ function updateCard(u) {
   }
   if (u.pos) {
     const ne = uavNe(u);
-    f('pos').textContent = `${ne.n.toFixed(1)} / ${ne.e.toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
+    // 起飞系显示：X=前（上电机头方向） / Y=左 / Z=上，与 3D 场景轴箭头一致
+    f('pos').textContent = `${ne.n.toFixed(1)} / ${(-ne.e).toFixed(1)} / ${(-u.pos.z).toFixed(1)} m`;
     const h = Math.hypot(u.pos.vx, u.pos.vy);
     f('vel').textContent = `${h.toFixed(1)} / ${(-u.pos.vz).toFixed(1)} m/s`;
   }
@@ -880,7 +881,8 @@ gotoToggle.addEventListener('click', () => {
 
 // ============================== 坐标飞行 ==============================
 // 机体相对：x=前 / y=左 / z=上，把 (dx,dy,dz) 交给 web_control_node 换算成 ENU 位移后 goto。
-// 绝对坐标：x=东 / y=北 / z=上，与指点飞行共用共享坐标系换算，得到该机本地 ENU 目标点后 goto。
+// 绝对坐标：x=前 / y=左 / z=上（起飞系，前=上电机头方向），与指点飞行共用共享坐标系换算，
+// 得到该机本地 ENU 目标点后 goto。
 const coordToggle = document.getElementById('coord-toggle');
 const coordPanel = document.getElementById('coord-panel');
 const coordClose = document.getElementById('coord-close');
@@ -900,7 +902,7 @@ function setCoordMode(mode) {
   coordAbsBtn.classList.toggle('on', mode === 'abs');
   coordHint.textContent = mode === 'body'
     ? '机体相对：X=前(米) Y=左(米) Z=上(米)。目标 = 当前机位 + 机头坐标系位移。'
-    : '绝对坐标：X=东(米) Y=北(米) Z=上(米)。目标 = 指定 ENU 点（按上方坐标系下拉框解释）。';
+    : '绝对坐标：X=前(米) Y=左(米) Z=上(米)。目标 = 指定起飞系点（原点按上方坐标系下拉框解释）。';
   // 切模式时给输入框一个合理默认，避免拿错数值
   if (mode === 'body') { coordInX.value = 0.5; coordInY.value = 0; coordInZ.value = 0; }
   else { coordInX.value = ''; coordInY.value = ''; coordInZ.value = ''; }
@@ -919,10 +921,10 @@ function refreshCoordInfo() {
   const u = selectedNs && uavs[selectedNs];
   if (!u || !u.pos) { coordInfo.textContent = '尚未选择在线飞机'; return; }
   const ne = uavNe(u);
-  const enu = { x: ne.e, y: ne.n, z: -u.pos.z };   // 显示统一用 ENU（东/北/上），与本机本地 ENU 对齐
-  const deg = ((Math.PI / 2 - (u.pos.heading ?? 0)) * 180 / Math.PI + 360) % 360;
+  const disp = { x: ne.n, y: -ne.e, z: -u.pos.z };   // 显示统一用起飞系（前/左/上）
+  const deg = ((-(u.pos.heading ?? 0)) * 180 / Math.PI + 360) % 360;
   coordInfo.textContent =
-    `目标机：${u.ns}\n当前 ENU 位置：${enu.x.toFixed(2)}, ${enu.y.toFixed(2)}, ${enu.z.toFixed(2)} m\n当前航向（东=0°逆时针正）：${deg.toFixed(1)}°`;
+    `目标机：${u.ns}\n当前位置（前/左/上）：${disp.x.toFixed(2)}, ${disp.y.toFixed(2)}, ${disp.z.toFixed(2)} m\n当前航向（前=0°逆时针正）：${deg.toFixed(1)}°`;
 }
 
 // 打开/关闭面板；开面板时自动退出"指点飞行"避免两种互斥控制同时生效
@@ -949,7 +951,7 @@ function sendCoordGoto(u, action, payload, targetEnu) {
   const marker = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.8, 12),
                                 new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.9 }));
   marker.rotation.x = Math.PI;
-  marker.position.set(targetEnu.x, targetEnu.z + 0.4, -targetEnu.y);   // three: x=东, y=上, z=-北
+  marker.position.set(targetEnu.y, targetEnu.z + 0.4, targetEnu.x);   // three: x=北(前), y=上, z=东
   scene.add(marker);
   if (pendingCmds[id]) pendingCmds[id].marker = marker;
 }
@@ -977,14 +979,14 @@ coordGo.addEventListener('click', () => {
     sendCoordGoto(u, 'goto_body', { dx: x, dy: y, dz: z },
                   { x: ne.e + east, y: ne.n + north, z: finalAlt });
   } else {
-    // 绝对坐标：输入为 ENU（东/北/上），走共享坐标系换算到该机本地 ENU
+    // 绝对坐标：输入为起飞系（前/左/上），走共享坐标系换算到该机本地 ENU
     const h = Math.max(0.5, z);                 // 目标高度，低于 0.5m 按 0.5m 处理（保持安全爬升平面）
-    const shared = { n: y, e: x };              // ENU(东=x,北=y) ↔ 共享 NED(n=y,e=x)
+    const shared = { n: x, e: -y };             // 起飞系(前=x,左=y) ↔ 共享 NED(n=x,e=-y)
     if (Math.hypot(shared.n, shared.e) > FENCE_R) { showToast(`目标点在围栏外（R=${FENCE_R}m），已拒绝`, false); return; }
     const ne = uavNe(u);
     const localN = shared.n - (ne.n - u.pos.x); // 目标在该机本地系的北向分量
     const localE = shared.e - (ne.e - u.pos.y); // 东向分量
-    if (!confirm(`确认让 ${u.ns} 飞向绝对 ENU (${x}, ${y}, ${h.toFixed(2)})？`)) return;
+    if (!confirm(`确认让 ${u.ns} 飞向绝对坐标 前${x} 左${y} 高${h.toFixed(2)}？`)) return;
     sendCoordGoto(u, 'goto', { x: +localE.toFixed(2), y: +localN.toFixed(2), z: +h.toFixed(2) },
                   { x: +localE.toFixed(2), y: +localN.toFixed(2), z: +h.toFixed(2) });
   }
@@ -1023,8 +1025,8 @@ renderer.domElement.addEventListener('mouseup', (e) => {
   const t = (h - origin.y) / direction.y;    // three.js 里 y 是高度
   if (t <= 0) return;
   const p = origin.clone().add(direction.clone().multiplyScalar(t));
-  // ned2three(n,e,d)=(e,-d,-n) 的逆变换：共享 NED = (n=-p.z, e=p.x)
-  const shared = { n: -p.z, e: p.x };
+  // ned2three(n,e,d)=(n,-d,e) 的逆变换：共享 NED = (n=p.x, e=p.z)
+  const shared = { n: p.x, e: p.z };
   if (Math.hypot(shared.n, shared.e) > FENCE_R) { showToast(`目标点在围栏外（R=${FENCE_R}m），已拒绝`, false); return; }
   // 共享 NED -> 该机本地系：偏移 = 当前共享坐标 - 当前本地坐标（GPS 模式各机原点不同）
   const ne = uavNe(u);
@@ -1041,10 +1043,10 @@ renderer.domElement.addEventListener('mouseup', (e) => {
   pendingCmds[id].marker = marker;
 });
 
-// 地面网格与坐标轴 (NED: three.x=东, three.y=上, three.z=-北)
+// 地面网格与坐标轴 (起飞系: three.x=北=前, three.y=上, three.z=东=-左)
 scene.add(new THREE.GridHelper(20, 20, 0x30363d, 0x21262d));
-// 原点坐标指示: ROS 风格的右手系 (ENU 语义: X=东, Y=北, Z=上)
-// three 场景内 +X=东, +Y=上, -Z=北（数据映射行列式为+1，整体即右手系）
+// 原点坐标指示: 起飞系右手系 (X=前=上电机头方向, Y=左, Z=上)
+// three 场景内 +X=前, +Y=上, -Z=左（数据映射行列式为+1，整体即右手系）
 const axesOrigin = new THREE.Vector3(0, 0.01, 0);
 function mkAxis(dir, color, text) {
   scene.add(new THREE.ArrowHelper(dir, axesOrigin, 2, color, 0.35, 0.18));
@@ -1053,8 +1055,8 @@ function mkAxis(dir, color, text) {
   lb.scale.set(1.0, 0.26, 1);
   scene.add(lb);
 }
-mkAxis(new THREE.Vector3(1, 0, 0), 0xff5252, 'X 东');
-mkAxis(new THREE.Vector3(0, 0, -1), 0x4caf50, 'Y 北');
+mkAxis(new THREE.Vector3(1, 0, 0), 0xff5252, 'X 前');
+mkAxis(new THREE.Vector3(0, 0, -1), 0x4caf50, 'Y 左');
 mkAxis(new THREE.Vector3(0, 1, 0), 0x42a5f5, 'Z 上');
 const homeMark = new THREE.Mesh(
   new THREE.CylinderGeometry(0.4, 0.4, 0.02, 32),
@@ -1088,7 +1090,7 @@ const fenceTop = new THREE.Line(fenceRingGeo.clone(), new THREE.LineBasicMateria
 fenceTop.position.y = FENCE_H;
 scene.add(fenceTop);
 
-function ned2three(x, y, z) { return new THREE.Vector3(y, -z, -x); }
+function ned2three(x, y, z) { return new THREE.Vector3(x, -z, y); }
 
 // ---- 坐标系模式 ----
 // local(本机/UWB): 各机本地坐标即全局坐标（UWB 世界系各机同原点），直接使用
@@ -1233,8 +1235,8 @@ function createMesh(u) {
 }
 
 // PX4 vehicle_attitude.q = [w,x,y,z]，表示机体(FRD) -> NED 的旋转。
-// three 坐标系 = M * NED（M: three_x=东, three_y=上=-下, three_z=-北），
-// 因此 three 下的旋转矩阵 R' = M * R，即 R' 的三行分别为 R 的第2行、-第3行、-第1行。
+// three 坐标系 = M * NED（M: three_x=北=前, three_y=上=-下, three_z=东=-左），
+// 因此 three 下的旋转矩阵 R' = M * R，即 R' 的三行分别为 R 的第1行、-第3行、第2行。
 const _m4 = new THREE.Matrix4();
 
 function update3D(u) {
@@ -1262,9 +1264,9 @@ function update3D(u) {
     const r10 = 2 * (x * y + z * w),     r11 = 1 - 2 * (x * x + z * z), r12 = 2 * (y * z - x * w);
     const r20 = 2 * (x * z - y * w),     r21 = 2 * (y * z + x * w),     r22 = 1 - 2 * (x * x + y * y);
     _m4.set(
-       r10,  r11,  r12, 0,
+       r00,  r01,  r02, 0,
       -r20, -r21, -r22, 0,
-      -r00, -r01, -r02, 0,
+       r10,  r11,  r12, 0,
        0, 0, 0, 1);
     u.frame.quaternion.setFromRotationMatrix(_m4);
   } else {
