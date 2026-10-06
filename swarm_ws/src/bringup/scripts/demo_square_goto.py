@@ -12,18 +12,18 @@
       → 向后 0.5 回中心 → 降落。即沿四条正方向边绕完整个正方形，
       每条边都是机体正前/正左/正后/正右的直线，不走对角线。
 
-航线俯视图（机体航向为"前"，边长 SIDE，h=SIDE/2）：
+航线俯视图（机体航向为"前"，边长 SIDE，h=SIDE/2，逆时针绕中心）：
 
         前
         ↑
    前左 ────── 前右
-     │           ↑
-     │    中心 ──→ 右中（起点/终点）
-     ▼     （起飞点） │
+     ↓           │
+     前中 ←── 中心（起飞点）
+     ↑           │
    后左 ────── 后右
 
-   中心 →(前h)→ 右中 →(左h)→ 前右 →(后2h)→ 后右 →(右2h)→ 后左
-        →(前2h)→ 前左 →(左h)→ 右中 →(后h)→ 中心
+   中心 →(前h)→ 前中 →(左h)→ 前左 →(后2h)→ 后左 →(右2h)→ 后右
+        →(前2h)→ 前右 →(左h)→ 前中 →(后h)→ 中心
 
 控制方式：`Drone.goto()` 逐航点位置控制，每个航点停稳（速度收敛）后再走下一段。
 适合检验定位链的绝对精度——角点处能直观看到超调和抖动。
@@ -87,17 +87,18 @@ def main():
         def corner(fwd, right):
             return (cx + fx * fwd + rx * right, cy + fy * fwd + ry * right)
 
-        # 右中 → 前右 → 后右 → 后左 → 前左 → 右中：沿四条正方向边绕一整圈
+        # 前中 → 前左 → 后左 → 后右 → 前右 → 前中：逆时针沿四条正方向边绕一整圈
         # （向前 h → 向左 h → 向后 2h → 向右 2h → 向前 2h → 向左 h），
         # 随后由"回中心"一段完成最后向后 h
-        route = [corner(h, 0.0), corner(h, h), corner(-h, h), corner(-h, -h),
-                 corner(h, -h), corner(h, 0.0)]
-        names = ["右边中点（向前）", "前右角（向左）", "后右角（向后）",
-                 "后左角（向右）", "前左角（向前）", "右边中点（向左，闭合）"]
+        legs = [(h, 0.0), (h, -h), (-h, -h), (-h, h), (h, h), (h, 0.0)]  # (前, 右) 偏移
+        names = ["前边中点（向前）", "前左角（向左）", "后左角（向后）",
+                 "后右角（向右）", "前右角（向前）", "前边中点（向左，闭合）"]
 
         stage = "square"
-        for (x, y), desc in zip(route, names):
-            print(f">>> {desc} ({x:.2f},{y:.2f})")
+        for (f_off, r_off), desc in zip(legs, names):
+            x, y = corner(f_off, r_off)
+            # 前/左偏移与 WEB 地面站起飞系显示一致（前=X 左=Y），ENU 为 goto 实发值
+            print(f">>> {desc} 前{f_off:+.2f} 左{-r_off:+.2f}（ENU {x:.2f},{y:.2f}）")
             drone.goto(x, y, z, tol=TOL)
             time.sleep(CORNER_HOLD_S)
 
@@ -111,7 +112,7 @@ def main():
         drone.land()
         print("演示完成 ✔")
         emit_result("PASS", drone=NS, mode="goto_square", side=SIDE,
-                    waypoints=len(route), duration_s=round(time.time() - t0, 1))
+                    waypoints=len(legs), duration_s=round(time.time() - t0, 1))
         return 0
     except KeyboardInterrupt:
         emit_result("FAIL", stage=stage, error="用户中断(Ctrl+C)")
