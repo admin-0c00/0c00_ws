@@ -52,6 +52,11 @@ RTL_ALT=${RTL_ALT:-0}
 # _gps_alt_ref = gps.alt + pos(2)）。气压计从启动就压住 z，原点才能锁对。
 # 真机光流定高行为最接近干净气压计；SENS_EN_BAROSIM 必须显式写（参数持久化，
 # airframe 默认值覆盖不了历史保存值）
+# 注意：EKF2_BARO_NOISE 默认 3.5m 是按真实气压计标的，仿真气压计噪声仅
+# ~0.1m（0.01 hPa），默认值下 EKF 几乎不信任气压计 → 垂直速度 velD 失去
+# 约束，速度模式定高会持续爬升/下沉（2026-10-06 实测定位）。必须显式改小。
+# GPS_CTRL=7 开 GPS 高度融合：baro 从启动压住 z 保证 GPS 高度原点锁对，
+# GPS 高度（epv 0.1）入融合后双源冗余。
 HGT_REF=${HGT_REF:-0}
 # 日志轮转: 只保留最近 5 次仿真的日志（pxh> 刷屏极占磁盘，旧日志及时清）
 KEEP_LOGS=5
@@ -81,7 +86,7 @@ for i in $(seq 0 $((N - 1))); do
     mkdir -p "$inst_dir"
     # 每架独立的 uXRCE session key；围栏(GF_ACT)；返航高度(RTL_ALT)；EKF 高度参考(HGT_REF，默认 GPS)
     # 注意: 参数是持久化的，所有改过的项必须显式写出，否则沿用上次运行的值
-    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION %s\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\nparam set RTL_RETURN_ALT %s\nparam set EKF2_HGT_REF %s\nparam set EKF2_GPS_CTRL 5\nparam set SENS_EN_BAROSIM 1\n' "$sysid" "$GF_ACT" "$RTL_ALT" "$HGT_REF" > "$inst_dir/px4-rc.params"
+    printf 'param set UXRCE_DDS_KEY %s\nparam set GF_ACTION %s\nparam set GF_MAX_HOR_DIST 10\nparam set GF_MAX_VER_DIST 6\nparam set RTL_RETURN_ALT %s\nparam set EKF2_HGT_REF %s\nparam set EKF2_GPS_CTRL 7\nparam set EKF2_BARO_NOISE 0.15\nparam set SENS_EN_BAROSIM 1\n' "$sysid" "$GF_ACT" "$RTL_ALT" "$HGT_REF" > "$inst_dir/px4-rc.params"
 
     cd "$inst_dir"
     # stdin 用"tail -f 管道文件"：既不 EOF（否则 nsh 死循环刷 pxh> 写爆磁盘），

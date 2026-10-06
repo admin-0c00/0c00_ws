@@ -73,16 +73,21 @@
       <sensor name="imu_sensor" type="imu">
         <always_on>1</always_on>
         <update_rate>250</update_rate>
+        <!-- IMU 动态偏置清零（纯仿真决策）：dynamic_bias 是 300s 相关时间的随机游走，
+             每次上电漂到一个随机常值（实测 accel z 偏到 +0.067 m/s²）。EKF 的
+             accel bias 学习跟不上这个常值偏差 → 垂直速度 velD 被钉在 ~±0.13 m/s →
+             z 跑飞、baro/GPS 高度新息超门限被永久拒绝（2026-10-06 定位）。
+             白噪声保留，让 EKF 有正常的噪声特性。 -->
         <imu>
           <angular_velocity>
-            <x><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>3.8785e-05</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></x>
-            <y><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>3.8785e-05</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></y>
-            <z><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>3.8785e-05</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></z>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>0</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>0</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.00018665</stddev><dynamic_bias_stddev>0</dynamic_bias_stddev><dynamic_bias_correlation_time>1000</dynamic_bias_correlation_time></noise></z>
           </angular_velocity>
           <linear_acceleration>
-            <x><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0.006</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></x>
-            <y><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0.006</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></y>
-            <z><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0.006</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></z>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.00186</stddev><dynamic_bias_stddev>0</dynamic_bias_stddev><dynamic_bias_correlation_time>300</dynamic_bias_correlation_time></noise></z>
           </linear_acceleration>
         </imu>
       </sensor>

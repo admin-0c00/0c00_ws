@@ -114,8 +114,11 @@ void SensorGpsSim::Run()
 		vehicle_global_position_s gpos{};
 		_vehicle_global_position_sub.copy(&gpos);
 
-		double latitude = gpos.lat + math::degrees((double)generate_wgn() * 0.2 / CONSTANTS_RADIUS_OF_EARTH);
-		double longitude = gpos.lon + math::degrees((double)generate_wgn() * 0.2 / CONSTANTS_RADIUS_OF_EARTH);
+		// SwarmCore 修改: 水平噪声 0.2m -> 0.02m。真机用 UWB 共享锚点系（厘米级、各机坐标系
+		// 天然对齐），仿真 GPS 水平噪声过大会让各机 EKF 本地系原点随收敛过程缓慢漂移、
+		// 双机合圆心时圆心差达 2m+（2026-10-06 实测）。
+		double latitude = gpos.lat + math::degrees((double)generate_wgn() * 0.02 / CONSTANTS_RADIUS_OF_EARTH);
+		double longitude = gpos.lon + math::degrees((double)generate_wgn() * 0.02 / CONSTANTS_RADIUS_OF_EARTH);
 		// SwarmCore 修改: 高度噪声 0.5m -> 0.02m。本集群真机用 UWB/光流定位（厘米~分米级），
 		// 仿真 GPS 高度噪声过大会导致各机 EKF 高度原点各漂各的，地面站显示不一致
 		double altitude = (double)(gpos.alt + (generate_wgn() * 0.02f));
