@@ -43,15 +43,18 @@ parameters:
 
       LT_COV_POS:
         description:
-          short: Fallback position variance
-          long: Position variance used when the tag does not report a valid
-                error-of-position estimate (eop). Unit is variance, i.e.
-                (standard deviation)^2.
+          short: Minimum position variance
+          long: |
+            Minimum (lower-bound) horizontal position variance reported to the
+            EKF. The tag-reported error-of-position (eop) is used only when it
+            is larger than this floor, so an over-optimistic tag cannot make the
+            EKF over-trust UWB horizontal position. This is a variance, i.e.
+            (standard deviation)^2; 0.25 m^2 = 0.5 m std dev.
         type: float
         unit: m^2
         decimal: 4
         increment: 0.0025
-        default: 0.01
+        default: 0.25
 
       LT_COV_VEL:
         description:
@@ -99,6 +102,23 @@ parameters:
         min: 0
         max: 0.5
         default: 0.05
+
+      LT_MEDIAN_WIN:
+        description:
+          short: Median filter window for UWB position/velocity
+          long: |
+            Moving median filter applied to the horizontal UWB position and
+            velocity after glitch rejection and before the low-pass. A median
+            rejects single/double-frame impulse spikes that a low-pass alone
+            would smear instead of removing. Odd windows only: 0 disables,
+            3 or 5 samples. At 100 Hz a 3-sample window adds ~10 ms and a
+            5-sample window ~20 ms of group delay, both safe for hovering.
+        type: enum
+        values:
+          0: Disabled
+          3: 3 samples
+          5: 5 samples
+        default: 3
 
       LT_COV_VEL_Z:
         description:

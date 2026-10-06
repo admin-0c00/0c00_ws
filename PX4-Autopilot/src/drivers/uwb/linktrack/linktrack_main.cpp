@@ -33,8 +33,8 @@
  * Driver for Nooploop LinkTrack UWB positioning modules (NLink binary protocol).
  *
  * Parses tag frame 0 (header 0x55, function mark 0x01, 128 bytes, uint8 sum
- * check) and publishes the tag position/velocity as vehicle_visual_odometry
- * for EKF2 external vision fusion (EKF2_EV_*).
+ * check) and publishes the tag position as vehicle_visual_odometry for EKF2
+ * external vision fusion.
  *
  * If the module is configured for NMEA output instead of the NLink binary
  * protocol, this driver cannot parse it - switch the module back to the
@@ -74,6 +74,9 @@ static constexpr float LT_SCALE_POS = 1000.0f;  // int24 -> m
 static constexpr float LT_SCALE_VEL = 10000.0f; // int24 -> m/s
 static constexpr float LT_SCALE_EOP = 100.0f;   // uint8 -> m
 
+// maximum median filter window (LT_MEDIAN_WIN): odd windows only (3/5)
+static constexpr uint8_t LT_MEDIAN_MAX = 5;
+
 extern "C" __EXPORT int linktrack_main(int argc, char *argv[]);
 
 class LinkTrack : public ModuleBase<LinkTrack>, public ModuleParams
@@ -108,6 +111,28 @@ private:
 	static int32_t parse_int24(const uint8_t *b) { return ((int32_t)(b[0] << 8 | b[1] << 16 | b[2] << 24)) / 256; }
 	static float parse_float(const uint8_t *b) { float f; memcpy(&f, b, sizeof(f)); return f; }
 
+	// odd-window moving median, sorts a scratch copy so the ring buffer is untouched
+	static float median_value(const float *buf, int n)
+	{
+		float tmp[LT_MEDIAN_MAX];
+
+		for (int i = 0; i < n; ++i) { tmp[i] = buf[i]; }
+
+		for (int i = 1; i < n; ++i) {
+			const float key = tmp[i];
+			int j = i - 1;
+
+			while (j >= 0 && tmp[j] > key) {
+				tmp[j + 1] = tmp[j];
+				--j;
+			}
+
+			tmp[j + 1] = key;
+		}
+
+		return tmp[n / 2];
+	}
+
 	uORB::Publication<vehicle_odometry_s> _visual_odom_pub{ORB_ID(vehicle_visual_odometry)};
 
 	char _device[32] {};
@@ -135,6 +160,15 @@ private:
 	uint32_t _resync_count{0};
 	bool _have_acc_pos{false};
 
+	// median filter state (LT_MEDIAN_WIN)
+	int _med_win{0};
+	uint8_t _med_idx{0};
+	uint8_t _med_cnt{0};
+	float _med_pos_x[LT_MEDIAN_MAX] {};
+	float _med_pos_y[LT_MEDIAN_MAX] {};
+	float _med_vel_x[LT_MEDIAN_MAX] {};
+	float _med_vel_y[LT_MEDIAN_MAX] {};
+
 	// first-order low-pass state (LT_LPF_TAU)
 	bool _lpf_init{false};
 	float _lpf_pos[2] {};
@@ -147,7 +181,8 @@ private:
 		(ParamFloat<px4::params::LT_COV_VEL>) _param_cov_vel,
 		(ParamFloat<px4::params::LT_COV_VEL_Z>) _param_cov_vel_z,
 		(ParamFloat<px4::params::LT_MAX_STEP>) _param_max_step,
-		(ParamFloat<px4::params::LT_LPF_TAU>) _param_lpf_tau
+		(ParamFloat<px4::params::LT_LPF_TAU>) _param_lpf_tau,
+		(ParamInt<px4::params::LT_MEDIAN_WIN>) _param_median_win
 	)
 };
 
@@ -331,13 +366,16 @@ void LinkTrack::handle_frame()
 	}
 
 	odom.pose_frame = vehicle_odometry_s::POSE_FRAME_NED;
-	odom.velocity_frame = vehicle_odometry_s::VELOCITY_FRAME_NED;
 
-	// covariance: prefer the module's error-of-position estimate (std dev in m),
-	// fall back to the configured variance when eop is zero/invalid
+	// covariance: use the tag-reported error-of-position (eop, std dev in m) as the
+	// value, but never report less than the configured minimum variance
+	// (LT_COV_POS). An over-optimistic tag eop is therefore floored instead of
+	// letting the EKF over-trust the UWB horizontal position. When eop is
+	// absent/invalid the result is simply the configured minimum.
 	for (int i = 0; i < 3; ++i) {
 		const float eop = eop_raw[i] / LT_SCALE_EOP;
-		odom.position_variance[i] = (eop > 0.0f) ? (eop * eop) : _param_cov_pos.get();
+		const float eop_var = (eop > 0.0f) ? (eop * eop) : 0.0f;
+		odom.position_variance[i] = math::max(eop_var, _param_cov_pos.get());
 		odom.velocity_variance[i] = _param_cov_vel.get();
 	}
 
@@ -357,10 +395,12 @@ void LinkTrack::handle_frame()
 	odom.orientation_variance[2] = NAN;
 	odom.reset_counter = 0;
 
-	// glitch rejection (LT_MAX_STEP): drop frames whose horizontal displacement
+	// glitch rejection (LT_MAX_STEP): frames whose horizontal displacement
 	// from the last accepted frame is physically impossible (EMI glitches can
-	// teleport the solution by meters in one 100 Hz frame). If the new position
-	// persists for 10 consecutive self-consistent frames, resync and accept it.
+	// teleport the solution by meters in one frame) are held back: the last
+	// accepted position is republished with inflated variance so the VO stream
+	// never stalls. If the new position persists for 10 consecutive
+	// self-consistent frames, resync and accept it.
 	const float max_step = _param_max_step.get();
 
 	if (max_step > 0.f) {
@@ -384,11 +424,62 @@ void LinkTrack::handle_frame()
 
 			if ((dax * dax + day * day) > (max_step * max_step) && _resync_count < 10) {
 				_step_rejects++;
+
+				// hold-publish: republish the last accepted position instead of
+				// dropping the frame. This keeps the VO topic alive so the EKF
+				// never hits its EV timeout (400 ms) while waiting for resync,
+				// avoiding a stopEvPosFusion/reset_pos_to_vision cycle. The
+				// inflated variance (4x) marks the sample as low confidence.
+				odom.position[0] = _last_acc_pos[0];
+				odom.position[1] = _last_acc_pos[1];
+				odom.position_variance[0] *= 4.f;
+				odom.position_variance[1] *= 4.f;
+				odom.velocity_frame = vehicle_odometry_s::VELOCITY_FRAME_UNKNOWN;
+
+				for (int i = 0; i < 3; ++i) {
+					odom.velocity[i] = NAN;
+					odom.velocity_variance[i] = NAN;
+				}
+
+				_visual_odom_pub.publish(odom);
+				_frame_count++;
+				_last_frame_time = odom.timestamp;
 				return;
 			}
 
 			_last_acc_pos[0] = odom.position[0];
 			_last_acc_pos[1] = odom.position[1];
+		}
+	}
+
+	// median filter (LT_MEDIAN_WIN): suppress single/double-frame impulse spikes
+	// before the low-pass, so a stray glitch never reaches the EKF innovation test.
+	const int med_win = _param_median_win.get();
+	const float med_dt = (_last_frame_time != 0) ? (odom.timestamp - _last_frame_time) * 1e-6f : 0.01f;
+
+	// reset on parameter change or stream stall so stale samples never mix in
+	if (med_win != _med_win || med_dt > 0.2f) {
+		_med_win = med_win;
+		_med_idx = 0;
+		_med_cnt = 0;
+	}
+
+	if (_med_win >= 3) {
+		_med_pos_x[_med_idx] = odom.position[0];
+		_med_pos_y[_med_idx] = odom.position[1];
+		_med_vel_x[_med_idx] = odom.velocity[0];
+		_med_vel_y[_med_idx] = odom.velocity[1];
+		_med_idx = (uint8_t)((_med_idx + 1) % _med_win);
+
+		if (_med_cnt < _med_win) {
+			_med_cnt++;
+		}
+
+		if (_med_cnt == _med_win) {
+			odom.position[0] = median_value(_med_pos_x, _med_win);
+			odom.position[1] = median_value(_med_pos_y, _med_win);
+			odom.velocity[0] = median_value(_med_vel_x, _med_win);
+			odom.velocity[1] = median_value(_med_vel_y, _med_win);
 		}
 	}
 
@@ -426,6 +517,15 @@ void LinkTrack::handle_frame()
 		odom.velocity[0] = _lpf_vel[0];
 		odom.velocity[1] = _lpf_vel[1];
 	}
+
+	// Publish the (median+LPF filtered) horizontal velocity for EKF EV
+	// velocity fusion (EKF2_EV_CTRL bit 2). A stiffer velocity estimate
+	// keeps the EKF position from bending away from the UWB truth between
+	// position fixes (real-flight log_16: EKF-vs-UWB gap hit 0.54 m during
+	// accel/decel legs, visibly snaking paths). The vertical component stays
+	// finite-but-huge-variance (LT_COV_VEL_Z) because the EKF requires an
+	// all-finite velocity sample, while the tag z axis is unreliable.
+	odom.velocity_frame = vehicle_odometry_s::VELOCITY_FRAME_NED;
 
 	_visual_odom_pub.publish(odom);
 
