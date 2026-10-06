@@ -442,11 +442,13 @@ class Drone:
             time.sleep(0.1)
 
     def goto(self, x, y, z, yaw=None, tol=0.3, timeout=60.0):
-        """飞到本地 ENU 点；停稳在目标点上后切回水平 follow 悬停。
+        """飞到本地 ENU 点；停稳后**保持冻结的目标点**（位置闭环悬停，"指哪打哪"）。
 
-        到位判定分两段：先进入 tol 半径，随后**保持目标设定点**直到水平速度
-        收敛（≤0.15 m/s 持续 0.3s，最多等 3s）再切 follow——避免带着残余速度
-        切 follow 把悬停点冻结在目标点之外（"指哪打哪"）。
+        到位判定分两段：先进入 tol 半径，随后保持目标设定点直到水平速度收敛
+        （≤0.15 m/s 持续 0.3s，最多等 3s）再返回。返回后设定点流继续冻结在
+        目标点上（position+local），物理漂移（残速/系留/配平偏）会被位置环拉回。
+        不切 follow：follow 把水平目标每帧重锚到当前估计，物理漂移没有纠正力
+        会持续累积（WEB goto 后"一直往后退"，真机 log_36 setpoint 追漂 0.7m/11s）。
         """
         if not self._streaming:
             raise DroneError(f"{self.ns}: 尚未 takeoff，不能 goto")
@@ -464,19 +466,18 @@ class Drone:
             with self._lock:
                 pos = self.pos
                 target = tuple(self._target)
-                sp_yaw = self._sp_yaw
                 vxy = math.hypot(self.vx, self.vy)
             if pos is not None:
                 if math.hypot(pos[0] - target[0], pos[1] - target[1]) < tol \
                         and abs(pos[2] - target[2]) < tol:
                     if arrived_since is None:
                         arrived_since = time.time()
-                    # 到位后保持目标设定点，等水平速度停稳再切 follow；
-                    # 3s 停不稳（持续扰动）也切，不卡死流程
+                    # 到位后保持目标设定点，等水平速度停稳再返回；
+                    # 3s 停不稳（持续扰动）也返回，不卡死流程。
+                    # 返回后不切 follow：设定点冻结在目标点上 = 真位置闭环悬停
                     settle_elapsed = time.time() - arrived_since
                     if (vxy <= 0.15 and settle_elapsed >= 0.3) \
                             or settle_elapsed >= 3.0:
-                        self._set_position_follow(pos[2], sp_yaw)
                         return
                 else:
                     arrived_since = None
