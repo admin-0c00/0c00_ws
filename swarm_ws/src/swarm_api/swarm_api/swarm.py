@@ -137,7 +137,7 @@ class Swarm:
             raise SwarmError(errors)
 
     # ---------------- 多机动作 ----------------
-    def takeoff(self, alt=1.5, tol=0.3, timeout=60.0):
+    def takeoff(self, alt=1.5, tol=0.15, timeout=60.0):
         """全群同时起飞到相对高度 alt（各自以本机当前高度为基准）。"""
         self._parallel(lambda d, _: d.takeoff(alt, tol=tol, timeout=timeout))
 
@@ -150,6 +150,56 @@ class Swarm:
             raise ValueError(f"points 数量({len(points)})与机数({len(self.drones)})不一致")
         self._parallel(lambda d, p: d.goto(*p, tol=tol, timeout=timeout), list(points))
 
+    def move_body_all(self, moves, yaw=None, tol=0.3, timeout=60.0):
+        """各机同时按调用瞬间各自机头 FLU 方向相对移动。"""
+        if isinstance(moves, tuple) and len(moves) == 3:
+            moves = [moves] * len(self.drones)
+        if len(moves) != len(self.drones):
+            raise ValueError(f"moves 数量({len(moves)})与机数({len(self.drones)})不一致")
+        self._parallel(
+            lambda d, move: d.move_body(
+                *move, yaw=yaw, tol=tol, timeout=timeout),
+            list(moves))
+
+    def circle_all(self, circles, ccw=True, yaw=None, timeout=120.0):
+        """各机同时画圆（轨迹流）。circles 为 [(cx,cy,z,radius,speed,laps), ...]，
+        与机数等长；只传一个 6 元组则全群画同一个圆（共享圆心时注意避碰/各自半径）。
+        """
+        if isinstance(circles, tuple) and len(circles) == 6:
+            circles = [circles] * len(self.drones)
+        if len(circles) != len(self.drones):
+            raise ValueError(f"circles 数量({len(circles)})与机数({len(self.drones)})不一致")
+        self._parallel(
+            lambda d, c: d.circle(*c, ccw=ccw, yaw=yaw, timeout=timeout),
+            list(circles))
+
+    def circle_velocity_all(self, circles, ccw=True, yaw_rate=0.0, timeout=120.0):
+        """各机同时画圆（速度模式轨迹流）。circles 为
+        [(cx,cy,z,radius,speed,laps), ...]，与机数等长；只传一个 6 元组则广播。
+        """
+        if isinstance(circles, tuple) and len(circles) == 6:
+            circles = [circles] * len(self.drones)
+        if len(circles) != len(self.drones):
+            raise ValueError(f"circles 数量({len(circles)})与机数({len(self.drones)})不一致")
+        self._parallel(
+            lambda d, c: d.circle_velocity(
+                *c, ccw=ccw, yaw_rate=yaw_rate, timeout=timeout),
+            list(circles))
+
+    def circle_smooth_all(self, circles, ccw=True, k=0.3, k_i=0.1, yaw_rate=0.0,
+                          timeout=120.0):
+        """各机同时画圆（平滑模式：速度前馈为主 + 小增益纠正）。circles 为
+        [(cx,cy,z,radius,speed,laps), ...]，与机数等长；只传一个 6 元组则广播。
+        """
+        if isinstance(circles, tuple) and len(circles) == 6:
+            circles = [circles] * len(self.drones)
+        if len(circles) != len(self.drones):
+            raise ValueError(f"circles 数量({len(circles)})与机数({len(self.drones)})不一致")
+        self._parallel(
+            lambda d, c: d.circle_smooth(
+                *c, ccw=ccw, k=k, k_i=k_i, yaw_rate=yaw_rate, timeout=timeout),
+            list(circles))
+
     def set_velocity_all(self, velocities):
         """各机速度控制（非阻塞）。单个 (vx,vy,vz) 或每机一个。"""
         if isinstance(velocities, tuple) and len(velocities) == 3:
@@ -160,7 +210,7 @@ class Swarm:
             d.set_velocity(*v)
 
     def hover(self):
-        """全群原地悬停。"""
+        """全群在各自本地系水平 follow 悬停。"""
         for d in self.drones:
             d.hover()
 
